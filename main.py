@@ -21,7 +21,7 @@ if "initialized" not in st.session_state:
   st.session_state.boss_x = 250
   st.session_state.boss_y = 80
   st.session_state.boss_intent = (
-      "attack_line"  # ボスの予告攻撃の種類 ('attack_line', 'attack_wide')
+      "line"  # ボスの予告攻撃の種類 ('line', 'area')
   )
   st.session_state.turn = 1
   st.session_state.logs = [
@@ -66,6 +66,47 @@ def draw_dot_sprite(draw, dot_pattern, start_x, start_y, scale=3, color_map=None
         draw.rectangle([x0, y0, x0 + scale, y0 + scale], fill=color_map[char])
 
 
+# --- ターン進行＆敵の行動を処理する共通関数（※ここに移動しました） ---
+def process_turn(action_type, log_msg):
+  if log_msg:
+    st.session_state.logs.insert(
+        0, f"ターン {st.session_state.turn}: {log_msg}"
+    )
+
+  # 1. 敵（ボス）の移動処理（プレイヤーを少し追いかけるように動く）
+  if st.session_state.player_x < st.session_state.boss_x:
+    st.session_state.boss_x -= random.choice([0, 20, 35])
+  else:
+    st.session_state.boss_x += random.choice([0, 20, 35])
+  st.session_state.boss_x = max(80, min(420, st.session_state.boss_x))
+
+  # 2. 前のターンに予告された攻撃の判定（赤ゾーンにプレイヤーがいたら被弾）
+  hit = False
+  if st.session_state.boss_intent == "line":
+    # 直線上の予告ゾーン（ボスのX座標±25以内）
+    if abs(st.session_state.player_x - st.session_state.boss_x) < 25:
+      hit = True
+  elif st.session_state.boss_intent == "area":
+    # 広範囲エリア（画面中央付近など）
+    if 180 < st.session_state.player_x < 320:
+      hit = True
+
+  if hit:
+    edmg = random.randint(15, 25)
+    st.session_state.player_hp -= edmg
+    st.session_state.logs.insert(
+        0, f"  ⚠️ 魔王の攻撃が直撃！ {edmg} のダメージを受けた！"
+    )
+  else:
+    st.session_state.logs.insert(0, "  ✨ プレイヤーはうまく攻撃を回避した！")
+
+  # 3. 次のターンの攻撃予告をランダムに決定
+  st.session_state.boss_intent = random.choice(["line", "area"])
+
+  st.session_state.turn += 1
+  st.rerun()
+
+
 # --- ゲーム画面の描画関数 ---
 def render_game_frame():
   image = Image.new("RGB", (WIDTH, HEIGHT), color=(15, 17, 26))
@@ -79,7 +120,6 @@ def render_game_frame():
 
   # --- 1. ボスの攻撃予告（赤く光るエリア）の描画 ---
   if st.session_state.boss_intent == "line":
-    # ボスの直下から下に向かう直線状の攻撃予告
     draw.rectangle(
         [
             st.session_state.boss_x - 15,
@@ -91,7 +131,6 @@ def render_game_frame():
         fill=(80, 20, 20),
     )
   elif st.session_state.boss_intent == "area":
-    # プレイヤーの周辺を狙った広範囲攻撃予告
     target_x = st.session_state.player_x
     draw.rectangle(
         [target_x - 50, 150, target_x + 50, HEIGHT - 20],
@@ -184,48 +223,6 @@ with col_ctrl:
     for key in list(st.session_state.keys()):
       del st.session_state[key]
     st.rerun()
-
-
-# --- ターン進行＆敵の行動を処理する共通関数 ---
-def process_turn(action_type, log_msg):
-  if log_msg:
-    st.session_state.logs.insert(
-        0, f"ターン {st.session_state.turn}: {log_msg}"
-    )
-
-  # 1. 敵（ボス）の移動処理（プレイヤーを少し追いかけるように動く）
-  if st.session_state.player_x < st.session_state.boss_x:
-    st.session_state.boss_x -= random.choice([0, 20, 35])
-  else:
-    st.session_state.boss_x += random.choice([0, 20, 35])
-  st.session_state.boss_x = max(80, min(420, st.session_state.boss_x))
-
-  # 2. 前のターンに予告された攻撃の判定（赤ゾーンにプレイヤーがいたら被弾）
-  hit = False
-  if st.session_state.boss_intent == "line":
-    # 直線上の予告ゾーン（ボスのX座標±20以内）
-    if abs(st.session_state.player_x - st.session_state.boss_x) < 25:
-      hit = True
-  elif st.session_state.boss_intent == "area":
-    # 広範囲エリア（画面中央付近など）
-    if 180 < st.session_state.player_x < 320:
-      hit = True
-
-  if hit:
-    edmg = random.randint(15, 25)
-    st.session_state.player_hp -= edmg
-    st.session_state.logs.insert(
-        0, f"  ⚠️ 魔王の攻撃が直撃！ {edmg} のダメージを受けた！"
-    )
-  else:
-    st.session_state.logs.insert(0, "  ✨ プレイヤーはうまく攻撃を回避した！")
-
-  # 3. 次のターンの攻撃予告をランダムに決定
-  st.session_state.boss_intent = random.choice(["line", "area"])
-
-  st.session_state.turn += 1
-  st.rerun()
-
 
 # --- ログ表示 ---
 st.markdown("---")

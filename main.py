@@ -231,4 +231,4 @@ def process_turn(action_type, log_msg):
 st.markdown("---")
 st.subheader("📜 バトルログ")
 for log in st.session_state.logs[:4]:
-  st.
+  st.text(log)

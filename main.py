@@ -1,103 +1,154 @@
-import sys
-import random
+import numpy as np
 import pygame
+import streamlit as st
 
-# 初期化
+# ページの設定
+st.set_page_config(
+    page_title="ダンジョン・ローグアタック", page_icon="⚔️", layout="centered"
+)
+
+st.title("⚔️ ダンジョン・ローグアタック (Pygame × Streamlit)")
+st.caption(
+    "Pygameの描画エンジンとStreamlitのボタン操作を融合させたハイブリッド型RPGアクション！"
+)
+
+# Pygameの初期化（ウィンドウは開かず、内部サーフェスのみ使用）
 pygame.init()
-SCREEN_WIDTH = 600
-SCREEN_HEIGHT = 400
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("ダンジョン・ローグアタック")
-clock = pygame.time.Clock()
+WIDTH, HEIGHT = 500, 300
+surface = pygame.Surface((WIDTH, HEIGHT))
 
-# 色の定義
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (231, 76, 60)
-BLUE = (52, 152, 219)
-GRAY = (127, 140, 141)
+# --- セッションステート（ゲーム状態）の初期化 ---
+if "player_hp" not in st.session_state:
+  st.session_state.player_hp = 100
+  st.session_state.enemy_hp = 100
+  st.session_state.turn = 1
+  st.session_state.player_x = 80
+  st.session_state.enemy_x = 380
+  st.session_state.logs = ["暗いダンジョンに足を踏み入れた... 敵が現れた！"]
 
-# プレイヤークラス
-class Player:
-    def __init__(self):
-        self.x = 100
-        self.y = 200
-        self.size = 30
-        self.speed = 4
-        self.hp = 100
-        self.max_hp = 100
 
-    def move(self, keys):
-        if keys[pygame.K_LEFT] or keys[pygame.K_ord('a')]:
-            self.x = max(0, self.x - self.speed)
-        if keys[pygame.K_RIGHT] or keys[pygame.K_ord('d')]:
-            self.x = min(SCREEN_WIDTH - self.size, self.x + self.speed)
-        if keys[pygame.K_UP] or keys[pygame.K_ord('w')]:
-            self.y = max(0, self.y - self.speed)
-        if keys[pygame.K_DOWN] or keys[pygame.K_ord('s')]:
-            self.y = min(SCREEN_HEIGHT - self.size, self.y + self.speed)
+# --- ゲーム画面を描画する関数 (Pygame処理) ---
+def render_game_frame():
+  # 背景（ダンジョンの床・壁風）
+  surface.fill((20, 24, 33))
 
-    def draw(self, surface):
-        pygame.draw.rect(surface, BLUE, (self.x, self.y, self.size, self.size))
+  # グリッド線の描画
+  for x in range(0, WIDTH, 50):
+    pygame.draw.line(surface, (35, 40, 55), (x, 0), (x, HEIGHT), 1)
+  for y in range(0, HEIGHT, 50):
+    pygame.draw.line(surface, (35, 40, 55), (0, y), (WIDTH, y), 1)
 
-# 敵クラス
-class Enemy:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.size = 25
-        self.speed = 2
-        self.hp = 30
+  # プレイヤーキャラ（青い四角 / またはサークル）
+  pygame.draw.rect(
+      surface,
+      (64, 165, 255),
+      (st.session_state.player_x, HEIGHT // 2 - 25, 40, 50),
+      border_radius=8,
+  )
+  # プレイヤーの目・装飾
+  pygame.draw.rect(
+      surface,
+      (255, 255, 255),
+      (st.session_state.player_x + 25, HEIGHT // 2 - 15, 8, 8),
+  )
 
-    def chase(self, target_x, target_y):
-        if self.x < target_x:
-            self.x += self.speed
-        elif self.x > target_x:
-            self.x -= self.speed
-            
-        if self.y < target_y:
-            self.y += self.speed
-        elif self.y > target_y:
-            self.y -= self.speed
+  # モンスターキャラ（赤い四角）
+  pygame.draw.rect(
+      surface,
+      (255, 85, 85),
+      (st.session_state.enemy_x, HEIGHT // 2 - 25, 40, 50),
+      border_radius=8,
+  )
+  pygame.draw.rect(
+      surface,
+      (255, 255, 255), (st.session_state.enemy_x + 8, HEIGHT // 2 - 15, 8, 8)
+  )
 
-    def draw(self, surface):
-        pygame.draw.rect(surface, RED, (self.x, self.y, self.size, self.size))
+  # HPバーの背景
+  pygame.draw.rect(surface, (60, 60, 60), (30, 20, 150, 16), border_radius=4)
+  pygame.draw.rect(surface, (60, 60, 60), (320, 20, 150, 16), border_radius=4)
 
-# ゲームのメインループ
-player = Player()
-enemies = [Enemy(500, 100), Enemy(550, 300)]
-font = pygame.font.SysFont(None, 24)
+  # HPバー（プレイヤー：緑）
+  p_hp_width = max(0, int(150 * (st.session_state.player_hp / 100)))
+  pygame.draw.rect(surface, (46, 204, 113), (30, 20, p_hp_width, 16), border_radius=4)
 
-running = True
-while running:
-    # 1. イベント処理
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = false
+  # HPバー（モンスター：赤）
+  e_hp_width = max(0, int(150 * (st.session_state.enemy_hp / 100)))
+  pygame.draw.rect(surface, (231, 76, 60), (320, 20, e_hp_width, 16), border_radius=4)
 
-    # 2. キー入力と更新
-    keys = pygame.key.get_pressed()
-    player.move(keys)
+  # --- PygameのSurfaceをStreamlit用にNumPy配列に変換 ---
+  # Pygameの配列形状 (Width, Height, 3) を Streamlit (Height, Width, 3) に転置する
+  raw_array = pygame.surfarray.array3d(surface)
+  return np.transpose(raw_array, (1, 0, 2))
 
-    for enemy in enemies:
-        enemy.chase(player.x, player.y)
-        # 当たり判定（簡易）
-        if abs(player.x - enemy.x) < 20 and abs(player.y - enemy.y) < 20:
-            player.hp = max(0, player.hp - 1)
 
-    # 3. 描画
-    screen.fill(BLACK)
-    
-    player.draw(screen)
-    for enemy in enemies:
-        enemy.draw(screen)
+# --- レイアウト構築 ---
+col_game, col_ctrl = st.columns([3, 2])
 
-    # UI（HP表示）
-    hp_text = font.render(f"HP: {player.hp}/{player.max_hp}", True, WHITE)
-    screen.blit(hp_text, (10, 10))
+with col_game:
+  st.subheader("🎮 バトルフィールド")
+  # Pygameで描画したフレームを画像として表示
+  game_frame = render_game_frame()
+  st.image(game_frame, use_container_width=True)
 
-    pygame.display.flip()
-    clock.tick(60)
+with col_ctrl:
+  st.subheader("⚡ アクション選択")
 
-pygame.quit()
-sys.exit()
+  # ゲームオーバー・クリア判定
+  is_game_over = (
+      st.session_state.player_hp <= 0 or st.session_state.enemy_hp <= 0
+  )
+
+  if not is_game_over:
+    if st.button("⚔️ 通常攻撃 (強撃)", use_container_width=True):
+      dmg_to_enemy = np.randint(15, 25) if hasattr(np, "randint") else 20
+      st.session_state.enemy_hp -= 20
+      st.session_state.logs.insert(
+          0, f"ターン {st.session_state.turn}: プレイヤーの攻撃！ 20のダメージ。"
+      )
+
+      if st.session_state.enemy_hp > 0:
+        st.session_state.player_hp -= 15
+        st.session_state.logs.insert(
+            0, f"  └ モンスターの反撃！ 15のダメージを受けた。"
+        )
+      st.session_state.turn += 1
+      st.rerun()
+
+    if st.button("🛡️ 回避 & 接近", use_container_width=True):
+      st.session_state.player_x = min(
+          st.session_state.enemy_x - 45, st.session_state.player_x + 30
+      )
+      st.session_state.logs.insert(
+          0,
+          f"ターン {st.session_state.turn}: 前方に踏み込み、被ダメージを抑えた！",
+      )
+      st.session_state.turn += 1
+      st.rerun()
+
+    if st.button("🧪 ポーション使用 (回復)", use_container_width=True):
+      st.session_state.player_hp = min(100, st.session_state.player_hp + 35)
+      st.session_state.logs.insert(
+          0, f"ターン {st.session_state.turn}: ポーションでHPが35回復した！"
+      )
+      st.session_state.turn += 1
+      st.rerun()
+  else:
+    if st.session_state.player_hp <= 0:
+      st.error("💀 ゲームオーバー... 敗北しました。")
+    else:
+      st.success("🎉 討伐成功！ ダンジョンをクリアした！")
+
+  if st.button("🔄 ゲームリセット", use_container_width=True):
+    st.session_state.player_hp = 100
+    st.session_state.enemy_hp = 100
+    st.session_state.turn = 1
+    st.session_state.player_x = 80
+    st.session_state.logs = ["新しい冒険が始まった。"]
+    st.rerun()
+
+# --- ログ表示セクション ---
+st.markdown("---")
+st.subheader("📜 冒険の記録 (ログ)")
+for log in st.session_state.logs[:4]:
+  st.text(log)

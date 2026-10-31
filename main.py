@@ -1,109 +1,159 @@
+import os
 import random
 from PIL import Image, ImageDraw
 import streamlit as st
 
 # ページの設定
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：タクティカル戦",
+    page_title="ダンジョン・ローグアタック：3人パーティ戦",
     page_icon="⚔️",
     layout="centered",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：タクティカル戦")
-st.caption("敵も移動し、攻撃予告（赤ゾーン）が表示されます。予測して回避せよ！")
+st.title("⚔️ ダンジョン・ローグアタック：パーティ戦 (全10ステージ)")
+st.caption(
+    "3人の仲間を順に操作して魔王軍を打ち破り、第10ステージの深部を目指せ！"
+)
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
-  st.session_state.player_hp = 100
-  st.session_state.boss_hp = 100
-  st.session_state.player_x = 250
-  st.session_state.player_y = 220
-  st.session_state.boss_x = 250
-  st.session_state.boss_y = 80
-  st.session_state.boss_intent = (
-      "line"  # ボスの予告攻撃の種類 ('line', 'area')
-  )
-  st.session_state.turn = 1
+  st.session_state.stage = 1
+  # プレイヤー3体のパーティ定義
+  st.session_state.players = [
+      {
+          "name": "戦士アレル",
+          "hp": 100,
+          "max_hp": 100,
+          "x": 150,
+          "y": 220,
+          "image": "assets/player1.png",
+      },
+      {
+          "name": "魔術師ミリア",
+          "hp": 70,
+          "max_hp": 70,
+          "x": 250,
+          "y": 220,
+          "image": "assets/player2.png",
+      },
+      {
+          "name": "聖騎士レオン",
+          "hp": 120,
+          "max_hp": 120,
+          "x": 350,
+          "y": 220,
+          "image": "assets/player3.png",
+      },
+  ]
+  st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス (0, 1, 2)
+
+  # ステージに応じた敵の初期化
+  st.session_state.enemy_hp = 80 + (st.session_state.stage * 20)
+  st.session_state.enemy_max_hp = st.session_state.enemy_hp
+  st.session_state.enemy_x = 250
+  st.session_state.enemy_y = 80
+  st.session_state.enemy_intent = "line"
   st.session_state.logs = [
-      "ダンジョンの奥深くで魔王が現れた！攻撃予告を避けて反撃せよ。"
+      "第1ステージ開始：暗いダンジョンに魔物が現れた！"
   ]
   st.session_state.initialized = True
 
 WIDTH, HEIGHT = 500, 300
 
-# --- ドット絵のパターン定義 ---
-PLAYER_DOTS = [
-    "....1111....",
-    "...111111...",
-    "..1.1111.1..",
-    "..1.1111.1..",
-    "....1111....",
-    "...11..11...",
-    "..1.2..2.1..",
-    ".1..2..2..1.",
-]
 
-BOSS_DOTS = [
-    "....2222....",
-    "...222222...",
-    "..2.2222.2..",
-    "..22222222..",
-    "....2222....",
-    "...2....2...",
-    "..2......2..",
-    ".2........2.",
-]
+# --- 画像を安全に読み込んで配置・リサイズするヘルパー関数 ---
+def paste_image_safely(bg_image, img_path, pos, size=(40, 40), fallback_color=(64, 165, 255)):
+  """指定されたパスの画像を読み込み、背景に貼り付ける。見つからない場合は四角形を描画。"""
+  try:
+    if os.path.exists(img_path):
+      img = Image.open(img_path).convert("RGBA")
+      img = img.resize(size, Image.Resampling.LANCZOS)
+      # 中央揃えで貼り付け
+      bg_image.paste(
+          img, (pos[0] - size[0] // 2, pos[1] - size[1] // 2), img
+      )
+      return
+  except Exception:
+    pass
 
-
-def draw_dot_sprite(draw, dot_pattern, start_x, start_y, scale=3, color_map=None):
-  if color_map is None:
-    color_map = {"1": (64, 165, 255), "2": (231, 76, 60)}
-  for r_idx, row in enumerate(dot_pattern):
-    for c_idx, char in enumerate(row):
-      if char in color_map:
-        x0 = start_x + (c_idx * scale)
-        y0 = start_y + (r_idx * scale)
-        draw.rectangle([x0, y0, x0 + scale, y0 + scale], fill=color_map[char])
+  # 画像が無い場合のフォールバック（色付きの丸または四角）
+  draw = ImageDraw.Draw(bg_image)
+  draw.rectangle(
+      [
+          pos[0] - size[0] // 2,
+          pos[1] - size[1] // 2,
+          pos[0] + size[0] // 2,
+          pos[1] + size[1] // 2,
+      ],
+      fill=fallback_color,
+  )
 
 
-# --- ターン進行＆敵の行動を処理する共通関数（※ここに移動しました） ---
+# --- ターン進行＆パーティ行動の処理関数 ---
 def process_turn(action_type, log_msg):
   if log_msg:
-    st.session_state.logs.insert(
-        0, f"ターン {st.session_state.turn}: {log_msg}"
-    )
+    st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
 
-  # 1. 敵（ボス）の移動処理（プレイヤーを少し追いかけるように動く）
-  if st.session_state.player_x < st.session_state.boss_x:
-    st.session_state.boss_x -= random.choice([0, 20, 35])
+  # 1. 敵の移動処理
+  if current_p["x"] < st.session_state.enemy_x:
+    st.session_state.enemy_x -= random.choice([0, 15, 25])
   else:
-    st.session_state.boss_x += random.choice([0, 20, 35])
-  st.session_state.boss_x = max(80, min(420, st.session_state.boss_x))
+    st.session_state.enemy_x += random.choice([0, 15, 25])
+  st.session_state.enemy_x = max(80, min(420, st.session_state.enemy_x))
 
-  # 2. 前のターンに予告された攻撃の判定（赤ゾーンにプレイヤーがいたら被弾）
+  # 2. 攻撃予告の判定（現在行動中のキャラに直撃するか）
   hit = False
-  if st.session_state.boss_intent == "line":
-    # 直線上の予告ゾーン（ボスのX座標±25以内）
-    if abs(st.session_state.player_x - st.session_state.boss_x) < 25:
+  if st.session_state.enemy_intent == "line":
+    if abs(current_p["x"] - st.session_state.enemy_x) < 25:
       hit = True
-  elif st.session_state.boss_intent == "area":
-    # 広範囲エリア（画面中央付近など）
-    if 180 < st.session_state.player_x < 320:
+  elif st.session_state.enemy_intent == "area":
+    if 180 < current_p["x"] < 320:
       hit = True
 
   if hit:
-    edmg = random.randint(15, 25)
-    st.session_state.player_hp -= edmg
+    edmg = random.randint(10, 20)
+    current_p["hp"] -= edmg
     st.session_state.logs.insert(
-        0, f"  ⚠️ 魔王の攻撃が直撃！ {edmg} のダメージを受けた！"
+        0, f"  ⚠️ 敵の攻撃が {current_p['name']} に直撃！ {edmg} のダメージ！"
     )
   else:
-    st.session_state.logs.insert(0, "  ✨ プレイヤーはうまく攻撃を回避した！")
+    st.session_state.logs.insert(
+        0, f"  ✨ {current_p['name']} はうまく回避した！"
+    )
 
-  # 3. 次のターンの攻撃予告をランダムに決定
-  st.session_state.boss_intent = random.choice(["line", "area"])
+  # 3. 敵の次の攻撃予告を決定
+  st.session_state.enemy_intent = random.choice(["line", "area"])
 
-  st.session_state.turn += 1
+  # 4. 生存している次のプレイヤーに手番を回す
+  alive_indices = [
+      i for i, p in enumerate(st.session_state.players) if p["hp"] > 0
+  ]
+
+  if st.session_state.enemy_hp <= 0:
+    # 敵撃破！次ステージへ
+    if st.session_state.stage >= 10:
+      st.session_state.game_cleared = True
+    else:
+      st.session_state.stage += 1
+      st.session_state.logs.insert(
+          0,
+          f"🎉 ステージ {st.session_state.stage - 1} クリア！次のステージへ進む。",
+      )
+      # ステージが進むにつれて敵のHPが増加
+      st.session_state.enemy_max_hp = 80 + (st.session_state.stage * 20)
+      st.session_state.enemy_hp = st.session_state.enemy_max_hp
+  elif not alive_indices:
+    # パーティ全滅
+    st.session_state.game_over = True
+  else:
+    # 次のメンバーへ順番交代
+    current_idx = st.session_state.current_player_idx
+    while True:
+      current_idx = (current_idx + 1) % len(st.session_state.players)
+      if st.session_state.players[current_idx]["hp"] > 0:
+        st.session_state.current_player_idx = current_idx
+        break
+
   st.rerun()
 
 
@@ -118,54 +168,52 @@ def render_game_frame():
   for y in range(0, HEIGHT, 40):
     draw.line([(0, y), (WIDTH, y)], fill=(28, 33, 48), width=1)
 
-  # --- 1. ボスの攻撃予告（赤く光るエリア）の描画 ---
-  if st.session_state.boss_intent == "line":
+  # 1. 敵の攻撃予告エリア
+  if st.session_state.enemy_intent == "line":
     draw.rectangle(
         [
-            st.session_state.boss_x - 15,
-            st.session_state.boss_y + 25,
-            st.session_state.boss_x + 15,
+            st.session_state.enemy_x - 15,
+            st.session_state.enemy_y + 25,
+            st.session_state.enemy_x + 15,
             HEIGHT - 20,
         ],
         outline=(255, 80, 80),
         fill=(80, 20, 20),
     )
-  elif st.session_state.boss_intent == "area":
-    target_x = st.session_state.player_x
+  elif st.session_state.enemy_intent == "area":
     draw.rectangle(
-        [target_x - 50, 150, target_x + 50, HEIGHT - 20],
-        outline=(255, 100, 50),
-        fill=(90, 40, 20),
+        [180, 150, 320, HEIGHT - 20], outline=(255, 100, 50), fill=(90, 40, 20)
     )
 
-  # --- 2. ボス（敵）の描画 ---
-  draw_dot_sprite(
-      draw,
-      BOSS_DOTS,
-      start_x=st.session_state.boss_x - 18,
-      start_y=st.session_state.boss_y - 12,
-      scale=3,
-      color_map={"2": (255, 85, 85)},
+  # 2. 敵の画像描画
+  paste_image_safely(
+      image,
+      "assets/enemy.png",
+      (st.session_state.enemy_x, st.session_state.enemy_y),
+      size=(48, 48),
+      fallback_color=(231, 76, 60),
   )
 
-  # --- 3. プレイヤーの描画 ---
-  draw_dot_sprite(
-      draw,
-      PLAYER_DOTS,
-      start_x=st.session_state.player_x - 18,
-      start_y=st.session_state.player_y - 12,
-      scale=3,
-      color_map={"1": (64, 165, 255), "2": (46, 204, 113)},
+  # 3. 生存しているプレイヤー全員の描画（行動中のキャラは少し明るく/大きく）
+  for idx, p in enumerate(st.session_state.players):
+    if p["hp"] > 0:
+      is_current = idx == st.session_state.current_player_idx
+      size = (44, 44) if is_current else (36, 36)
+      colors = [(64, 165, 255), (46, 204, 113), (241, 196, 15)]
+      paste_image_safely(
+          image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
+      )
+
+  # 4. ステータス表示（敵HPとステージ）
+  draw.rectangle([320, 15, 480, 32], fill=(40, 40, 40))
+  e_w = max(
+      0,
+      int(
+          160
+          * (st.session_state.enemy_hp / max(1, st.session_state.enemy_max_hp))
+      ),
   )
-
-  # --- 4. ステータスバー（HP） ---
-  draw.rectangle([20, 20, 140, 32], fill=(40, 40, 40))
-  p_w = max(0, int(120 * (st.session_state.player_hp / 100)))
-  draw.rectangle([20, 20, 20 + p_w, 32], fill=(46, 204, 113))
-
-  draw.rectangle([360, 20, 480, 32], fill=(40, 40, 40))
-  b_w = max(0, int(120 * (st.session_state.boss_hp / 100)))
-  draw.rectangle([360, 20, 360 + b_w, 32], fill=(231, 76, 60))
+  draw.rectangle([320, 15, 320 + e_w, 32], fill=(231, 76, 60))
 
   return image
 
@@ -174,50 +222,53 @@ def render_game_frame():
 col_game, col_ctrl = st.columns([3, 2])
 
 with col_game:
-  st.subheader("🎮 バトルフィールド")
+  st.subheader(
+      f"🎮 ステージ {st.session_state.get('stage', 1)} / 10 (敵HP:"
+      f" {st.session_state.get('enemy_hp', 100)})"
+  )
   game_img = render_game_frame()
   st.image(game_img, use_container_width=True)
 
 with col_ctrl:
-  st.subheader(f"⚡ ターン {st.session_state.turn}: アクション選択")
+  # ゲームクリア・ゲームオーバー判定
+  is_cleared = st.session_state.get("game_cleared", False)
+  is_game_over = st.session_state.get("game_over", False)
 
-  is_game_over = (
-      st.session_state.player_hp <= 0 or st.session_state.boss_hp <= 0
-  )
+  if not is_cleared and not is_game_over:
+    current_p = st.session_state.players[st.session_state.current_player_idx]
 
-  if not is_game_over:
-    st.text("【移動】攻撃予告エリア（赤）から逃げろ！")
+    st.markdown(f"### 👥 手番: **{current_p['name']}**")
+    st.progress(max(0.0, current_p["hp"] / current_p["max_hp"]))
+    st.text(f"HP: {current_p['hp']} / {current_p['max_hp']}")
+
+    st.markdown("---")
+    st.text("【移動】位置を変えて攻撃を避ける")
     c1, c2, c3 = st.columns(3)
     with c2:
       if st.button("⬆️ 前進"):
-        st.session_state.player_y = max(120, st.session_state.player_y - 15)
+        current_p["y"] = max(120, current_p["y"] - 15)
         process_turn("move", "前に踏み込んだ！")
     with c1:
-      if st.button("⬅️ 左回避"):
-        st.session_state.player_x = max(50, st.session_state.player_x - 40)
-        process_turn("move", "左へ素早く回避した！")
+      if st.button("⬅️ 左"):
+        current_p["x"] = max(50, current_p["x"] - 35)
+        process_turn("move", "左へ回避した！")
     with c3:
-      if st.button("➡️ 右回避"):
-        st.session_state.player_x = min(450, st.session_state.player_x + 40)
-        process_turn("move", "右へ素早く回避した！")
+      if st.button("➡️ 右"):
+        current_p["x"] = min(450, current_p["x"] + 35)
+        process_turn("move", "右へ回避した！")
 
     st.markdown("---")
 
-    if st.button("🔥 必殺剣 (攻撃)", use_container_width=True):
-      dmg = random.randint(18, 28)
-      st.session_state.boss_hp -= dmg
-      st.session_state.logs.insert(
-          0,
-          f"ターン {st.session_state.turn}: プレイヤーの攻撃！ 魔王に {dmg}"
-          " のダメージ。",
-      )
-      process_turn("attack", "")
+    if st.button("🔥 スキル攻撃", use_container_width=True):
+      dmg = random.randint(18, 30)
+      st.session_state.enemy_hp -= dmg
+      process_turn("attack", f"強力なスキル攻撃で {dmg} のダメージを与えた！")
 
   else:
-    if st.session_state.player_hp <= 0:
-      st.error("💀 魔王の攻撃に倒れました... ゲームオーバー")
-    else:
-      st.success("🎉 魔王を討伐しました！ 勝利！")
+    if is_cleared:
+      st.success("🎉 全10ステージ踏破！魔王を完全に討伐した！")
+    elif is_game_over:
+      st.error("💀 パーティが全滅しました... ゲームオーバー")
 
   if st.button("🔄 ゲームリセット", use_container_width=True):
     for key in list(st.session_state.keys()):

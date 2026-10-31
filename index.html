@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ダンジョン・ローグアタック</title>
+    <!-- PyScriptの読み込み -->
+    <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.2/core.css">
+    <script type="module" src="https://pyscript.net/releases/2026.7.2/core.js"></script>
+</head>
+<body>
+    <h1>ダンジョン・ローグアタック</h1>
+    <p>矢印キーまたはWASDで移動してモンスターから逃げろ！</p>
+
+    <!-- Pygameを描画するcanvasと、PyScriptの設定 -->
+    <py-config>
+        packages = ["pygame-ce"]
+    </py-config>
+
+    <script type="py" src="main.py"></script>
+</body>
+</html>

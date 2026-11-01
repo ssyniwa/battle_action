@@ -5,25 +5,27 @@ import streamlit as st
 
 # ページの設定
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：10ステージ制（拡大版）",
+    page_title="ダンジョン・ローグアタック：キャラクター拡大版",
     page_icon="⚔️",
     layout="centered",
 )
 
 st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅")
-st.caption("3人の仲間を率い、次々と立ちはだかる10体の強敵を撃破せよ！")
+st.caption(
+    "3人の仲間を率い、次々と立ちはだかる10体の強敵を撃破せよ！キャラ画像拡大版"
+)
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（.jpg に対応）
+  # プレイヤー3体のパーティ定義（JPG版）
   st.session_state.players = [
       {
           "name": "戦士アレル",
           "hp": 100,
           "max_hp": 100,
           "x": 150,
-          "y": 220,
+          "y": 210,
           "image": "assets/player1.jpg",
       },
       {
@@ -31,7 +33,7 @@ if "initialized" not in st.session_state:
           "hp": 70,
           "max_hp": 70,
           "x": 250,
-          "y": 220,
+          "y": 210,
           "image": "assets/player2.jpg",
       },
       {
@@ -39,7 +41,7 @@ if "initialized" not in st.session_state:
           "hp": 120,
           "max_hp": 120,
           "x": 350,
-          "y": 220,
+          "y": 210,
           "image": "assets/player3.jpg",
       },
   ]
@@ -49,7 +51,7 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_hp = 70 + (st.session_state.stage * 25)
   st.session_state.enemy_max_hp = st.session_state.enemy_hp
   st.session_state.enemy_x = 250
-  st.session_state.enemy_y = 80
+  st.session_state.enemy_y = 90
   st.session_state.enemy_intent = "line"
   st.session_state.logs = [
       "第1ステージ開始：スライムが現れた！仲間と共に戦え。"
@@ -73,9 +75,11 @@ ENEMY_NAMES = {
 }
 
 
-# --- 画像を安全に読み込んで配置・リサイズするヘルパー関数（JPG対応） ---
-def paste_image_safely(bg_image, img_path, pos, size=(40, 40), fallback_color=(64, 165, 255)):
-  """指定されたパスのJPG画像を読み込み、背景に貼り付ける。見つからない場合は四角形を描画。"""
+# --- 画像を安全に読み込んで配置・リサイズするヘルパー関数 ---
+def paste_image_safely(
+    bg_image, img_path, pos, size=(60, 60), fallback_color=(64, 165, 255)
+):
+  """指定されたパスのJPG画像を読み込み、大きくリサイズして背景に貼り付ける。"""
   try:
     if os.path.exists(img_path):
       img = Image.open(img_path).convert("RGB")
@@ -116,10 +120,10 @@ def process_turn(action_type, log_msg):
   # 2. 攻撃予告の判定
   hit = False
   if st.session_state.enemy_intent == "line":
-    if abs(current_p["x"] - st.session_state.enemy_x) < 25:
+    if abs(current_p["x"] - st.session_state.enemy_x) < 30:
       hit = True
   elif st.session_state.enemy_intent == "area":
-    if 180 < current_p["x"] < 320:
+    if 170 < current_p["x"] < 330:
       hit = True
 
   if hit:
@@ -154,13 +158,11 @@ def process_turn(action_type, log_msg):
           f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
           f"「{ENEMY_NAMES[st.session_state.stage]}」だ！",
       )
-      # ステージごとに敵のHPを強化
       st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 25)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
   elif not alive_indices:
     st.session_state.game_over = True
   else:
-    # 次の生存メンバーへ手番を回す
     current_idx = st.session_state.current_player_idx
     while True:
       current_idx = (current_idx + 1) % len(st.session_state.players)
@@ -186,20 +188,20 @@ def render_game_frame():
   if st.session_state.enemy_intent == "line":
     draw.rectangle(
         [
-            st.session_state.enemy_x - 15,
-            st.session_state.enemy_y + 25,
-            st.session_state.enemy_x + 15,
-            HEIGHT - 20,
+            st.session_state.enemy_x - 20,
+            st.session_state.enemy_y + 30,
+            st.session_state.enemy_x + 20,
+            HEIGHT - 15,
         ],
         outline=(255, 80, 80),
         fill=(80, 20, 20),
     )
   elif st.session_state.enemy_intent == "area":
     draw.rectangle(
-        [180, 150, 320, HEIGHT - 20], outline=(255, 100, 50), fill=(90, 40, 20)
+        [170, 140, 330, HEIGHT - 15], outline=(255, 100, 50), fill=(90, 40, 20)
     )
 
-  # 2. ステージに応じた敵のJPG画像ファイルを動的に指定 (enemy1.jpg 〜 enemy10.jpg)[cite: 2]
+  # 2. ステージに応じた敵の画像描画（サイズを大きく：72x72）[cite: 2]
   current_stage = st.session_state.get("stage", 1)
   enemy_img_path = f"assets/enemy{current_stage}.jpg"
 
@@ -207,15 +209,15 @@ def render_game_frame():
       image,
       enemy_img_path,
       (st.session_state.enemy_x, st.session_state.enemy_y),
-      size=(48, 48),
+      size=(72, 72),
       fallback_color=(231, 76, 60),
   )
 
-  # 3. 生存しているプレイヤー全員の描画
+  # 3. 生存しているプレイヤー全員の描画（サイズを大きく：行動中は70x70、他は56x56）[cite: 2]
   for idx, p in enumerate(st.session_state.players):
     if p["hp"] > 0:
       is_current = idx == st.session_state.current_player_idx
-      size = (44, 44) if is_current else (36, 36)
+      size = (70, 70) if is_current else (56, 56)
       colors = [(64, 165, 255), (46, 204, 113), (241, 196, 15)]
       paste_image_safely(
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
@@ -235,8 +237,7 @@ def render_game_frame():
   )
   draw.rectangle([320, 15, 320 + e_w, 32], fill=(231, 76, 60))
 
-  # ★ ここで画面全体を指定倍率（例: 2倍）に拡大する
-  # （NEARESTを指定するとドット絵の質感がくっきり綺麗に拡大されます）
+  # 画面全体の拡大処理（2倍表示でさらに見やすく）[cite: 2]
   scale_factor = 2
   image = image.resize(
       (WIDTH * scale_factor, HEIGHT * scale_factor), Image.Resampling.NEAREST
@@ -271,7 +272,7 @@ with col_ctrl:
     c1, c2, c3 = st.columns(3)
     with c2:
       if st.button("⬆️ 前進"):
-        current_p["y"] = max(120, current_p["y"] - 15)
+        current_p["y"] = max(110, current_p["y"] - 15)
         process_turn("move", "前に踏み込んだ！")
     with c1:
       if st.button("⬅️ 左"):

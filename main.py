@@ -5,23 +5,22 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：重なり防止版",
+    page_title="ダンジョン・ローグアタック：凶悪ステージ＆エフェクト版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（重なり防止版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（凶悪攻撃＆エフェクト版）"
 )
 st.caption(
-    "キャラクター同士が重ならないよう、それぞれ専用の移動エリアで連携して戦"
-    "う！"
+    "ステージが上がるごとに敵の攻撃が凶悪化！スキル攻撃時にはド派手なエフェクトが発生！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（それぞれ重ならない初期位置と移動制限エリアを設定）
+  # プレイヤー3体のパーティ定義（重なり防止エリア設定済み）
   st.session_state.players = [
       {
           "name": "戦士アレル",
@@ -62,8 +61,9 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_x = 600
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
+  st.session_state.effect_timer = 0  # スキルエフェクト表示用タイマー
   st.session_state.logs = [
-      "第1ステージ開始：スライムが現れた！仲間と共に陣形を維持して戦え。"
+      "第1ステージ開始：スライムが現れた！凶悪な攻撃を避けながら戦え。"
   ]
   st.session_state.initialized = True
 
@@ -109,45 +109,76 @@ def paste_image_safely(
   )
 
 
-# --- ターン進行＆パーティ行動の処理関数 ---
+# --- ターン進行＆凶悪化する攻撃判定の処理関数 ---
 def process_turn(action_type, log_msg):
   current_p = st.session_state.players[st.session_state.current_player_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
+  if action_type == "attack":
+    st.session_state.effect_timer = 1  # エフェクトを有効化
+  else:
+    st.session_state.effect_timer = 0
+
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
 
-  # 敵の移動処理
+  # 敵の移動処理（ステージが高いほど素早く動く）
+  move_range = min(70, 30 + (st.session_state.stage * 4))
   if current_p["x"] < st.session_state.enemy_x:
-    st.session_state.enemy_x -= random.choice([0, 30, 50])
+    st.session_state.enemy_x -= random.choice([0, move_range // 2, move_range])
   else:
-    st.session_state.enemy_x += random.choice([0, 30, 50])
+    st.session_state.enemy_x += random.choice([0, move_range // 2, move_range])
   st.session_state.enemy_x = max(250, min(950, st.session_state.enemy_x))
 
-  # 攻撃予告の判定
+  # --- ステージに応じた凶悪な攻撃範囲の判定 ---
   hit = False
-  if st.session_state.enemy_intent == "line":
+  intent = st.session_state.enemy_intent
+
+  if intent == "line":  # 直線攻撃
     if abs(current_p["x"] - st.session_state.enemy_x) < 70:
       hit = True
-  elif st.session_state.enemy_intent == "area":
-    if 400 < current_p["x"] < 800:
+  elif intent == "wide_blast":  # 広範囲ブラスト（ステージ3以上で登場）
+    if abs(current_p["x"] - st.session_state.enemy_x) < 180:
       hit = True
+  elif intent == "cross_laser":  # 十字レーザー（ステージ6以上で登場）
+    if (
+        abs(current_p["x"] - st.session_state.enemy_x) < 50
+        or 450 < current_p["y"] < 550
+    ):
+      hit = True
+  elif intent == "all_range":  # 全画面一閃（ステージ10など終盤）
+    hit = True  # ほぼ逃げ場なし
 
   if hit:
-    edmg = random.randint(10 + st.session_state.stage, 18 + st.session_state.stage)
+    # ステージが上がるほど敵の攻撃ダメージが跳ね上がる
+    edmg = random.randint(
+        12 + (st.session_state.stage * 3), 22 + (st.session_state.stage * 4)
+    )
     current_p["hp"] -= edmg
     st.session_state.logs.insert(
         0,
-        f"  ⚠️ {current_enemy_name}の攻撃が {current_p['name']}"
-        f" に直撃！ {edmg} のダメージ！",
+        f"  ⚠️ {current_enemy_name}の凶悪な攻撃が {current_p['name']}"
+        f" に直撃！ {edmg} の大ダメージ！",
     )
   else:
     st.session_state.logs.insert(
-        0, f"  ✨ {current_p['name']} は攻撃をうまく回避した！"
+        0, f"  ✨ {current_p['name']} は攻撃の猛威を華麗にかわした！"
     )
 
-  st.session_state.enemy_intent = random.choice(["line", "area"])
+  # --- ステージの進行度に応じて、選ばれる攻撃のバリエーションを凶悪化 ---
+  stage = st.session_state.stage
+  if stage <= 2:
+    available_intents = ["line"]
+  elif stage <= 5:
+    available_intents = ["line", "wide_blast"]
+  elif stage <= 8:
+    available_intents = ["line", "wide_blast", "cross_laser"]
+  else:
+    available_intents = ["line", "wide_blast", "cross_laser", "all_range"]
 
+  st.session_state.enemy_intent = random.choice(available_intents)
+
+  # ステージクリア・全滅・次キャラ交代の判定
   alive_indices = [
       i for i, p in enumerate(st.session_state.players) if p["hp"] > 0
   ]
@@ -161,9 +192,9 @@ def process_turn(action_type, log_msg):
       st.session_state.logs.insert(
           0,
           f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
-          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！",
+          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！より凶悪な攻撃に注意せよ！",
       )
-      st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 25)
+      st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 35)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
   elif not alive_indices:
     st.session_state.game_over = True
@@ -189,8 +220,9 @@ def render_game_frame():
   for y in range(0, HEIGHT, 100):
     draw.line([(0, y), (WIDTH, y)], fill=(28, 33, 48), width=2)
 
-  # 1. 敵の攻撃予告エリア
-  if st.session_state.enemy_intent == "line":
+  # 1. 敵の凶悪な攻撃予告エリアの描画
+  intent = st.session_state.enemy_intent
+  if intent == "line":
     draw.rectangle(
         [
             st.session_state.enemy_x - 60,
@@ -201,9 +233,34 @@ def render_game_frame():
         outline=(255, 80, 80),
         fill=(80, 20, 20),
     )
-  elif st.session_state.enemy_intent == "area":
+  elif intent == "wide_blast":
     draw.rectangle(
-        [400, 300, 800, HEIGHT - 40], outline=(255, 100, 50), fill=(90, 40, 20)
+        [
+            st.session_state.enemy_x - 180,
+            st.session_state.enemy_y + 70,
+            st.session_state.enemy_x + 180,
+            HEIGHT - 40,
+        ],
+        outline=(255, 50, 50),
+        fill=(110, 20, 20),
+    )
+  elif intent == "cross_laser":
+    draw.rectangle(
+        [
+            st.session_state.enemy_x - 50,
+            st.session_state.enemy_y + 70,
+            st.session_state.enemy_x + 50,
+            HEIGHT - 40,
+        ],
+        outline=(255, 0, 255),
+        fill=(100, 20, 100),
+    )
+    draw.rectangle(
+        [150, 440, 1050, 560], outline=(255, 0, 255), fill=(100, 20, 100)
+    )
+  elif intent == "all_range":
+    draw.rectangle(
+        [50, 150, 1150, 650], outline=(255, 255, 0), fill=(150, 50, 0)
     )
 
   current_stage = st.session_state.get("stage", 1)
@@ -218,7 +275,7 @@ def render_game_frame():
       fallback_color=(231, 76, 60),
   )
 
-  # 3. プレイヤーの画像描画（お互いのエリア内で描画されるため重ならない）
+  # 3. プレイヤーの画像描画
   for idx, p in enumerate(st.session_state.players):
     if p["hp"] > 0:
       is_current = idx == st.session_state.current_player_idx
@@ -228,7 +285,25 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. HPバーの描画
+  # 4. ★ スキル攻撃時のド派手なエフェクト描画
+  if st.session_state.get("effect_timer", 0) > 0:
+    ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
+    # 魔法陣・爆発エフェクト（同心円と十字の閃光）
+    draw.ellipse(
+        [ex - 120, ey - 120, ex + 120, ey + 120],
+        outline=(255, 255, 0),
+        width=8,
+    )
+    draw.ellipse(
+        [ex - 80, ey - 80, ex + 80, ey + 80],
+        outline=(0, 255, 255),
+        width=6,
+    )
+    draw.line([(ex - 160, ey), (ex + 160, ey)], fill=(255, 255, 255), width=10)
+    draw.line([(ex, ey - 160), (ex, ey + 160)], fill=(255, 255, 255), width=10)
+    st.session_state.effect_timer = 0  # 1回描画したらエフェクトをリセット
+
+  # 5. HPバーの描画
   draw.rectangle([800, 40, 1140, 76], fill=(40, 40, 40))
   e_w = max(
       0,
@@ -276,21 +351,21 @@ with col_ctrl:
         process_turn("move", "前に踏み込んだ！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
-        # ★ 自分の担当エリア（min_x〜max_x）の外に出ないように制限（重なり防止）
         current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)
         process_turn("move", "エリア内で左へ回避した！")
     with c3:
       if st.button("➡️ 右", use_container_width=True):
-        # ★ 自分の担当エリア（min_x〜max_x）の外に出ないように制限（重なり防止）
         current_p["x"] = min(current_p["max_x"], current_p["x"] + 70)
         process_turn("move", "エリア内で右へ回避した！")
 
     st.markdown("---")
 
     if st.button("🔥 スキル攻撃", use_container_width=True):
-      dmg = random.randint(20, 32)
+      dmg = random.randint(25, 40)
       st.session_state.enemy_hp -= dmg
-      process_turn("attack", f"強力なスキル攻撃で {dmg} のダメージを与えた！")
+      process_turn(
+          "attack", f"必殺スキルを発動し、 {dmg} の大ダメージを与えた！"
+      )
 
   else:
     if is_cleared:

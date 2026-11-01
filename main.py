@@ -5,7 +5,7 @@ import streamlit as st
 
 # ページの設定
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：10ステージ制（JPG版）",
+    page_title="ダンジョン・ローグアタック：10ステージ制（拡大版）",
     page_icon="⚔️",
     layout="centered",
 )
@@ -16,7 +16,7 @@ st.caption("3人の仲間を率い、次々と立ちはだかる10体の強敵�
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（拡張子を .jpg に変更）
+  # プレイヤー3体のパーティ定義（.jpg に対応）
   st.session_state.players = [
       {
           "name": "戦士アレル",
@@ -199,7 +199,7 @@ def render_game_frame():
         [180, 150, 320, HEIGHT - 20], outline=(255, 100, 50), fill=(90, 40, 20)
     )
 
-  # 2. ステージに応じた敵のJPG画像ファイルを動的に指定 (enemy1.jpg 〜 enemy10.jpg)
+  # 2. ステージに応じた敵のJPG画像ファイルを動的に指定 (enemy1.jpg 〜 enemy10.jpg)[cite: 2]
   current_stage = st.session_state.get("stage", 1)
   enemy_img_path = f"assets/enemy{current_stage}.jpg"
 
@@ -234,6 +234,13 @@ def render_game_frame():
       ),
   )
   draw.rectangle([320, 15, 320 + e_w, 32], fill=(231, 76, 60))
+
+  # ★ ここで画面全体を指定倍率（例: 2倍）に拡大する
+  # （NEARESTを指定するとドット絵の質感がくっきり綺麗に拡大されます）
+  scale_factor = 2
+  image = image.resize(
+      (WIDTH * scale_factor, HEIGHT * scale_factor), Image.Resampling.NEAREST
+  )
 
   return image
 

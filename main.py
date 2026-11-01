@@ -5,7 +5,7 @@ import streamlit as st
 
 # ページの設定
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：10ステージ制",
+    page_title="ダンジョン・ローグアタック：10ステージ制（JPG版）",
     page_icon="⚔️",
     layout="centered",
 )
@@ -16,7 +16,7 @@ st.caption("3人の仲間を率い、次々と立ちはだかる10体の強敵�
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義
+  # プレイヤー3体のパーティ定義（拡張子を .jpg に変更）
   st.session_state.players = [
       {
           "name": "戦士アレル",
@@ -24,7 +24,7 @@ if "initialized" not in st.session_state:
           "max_hp": 100,
           "x": 150,
           "y": 220,
-          "image": "assets/player1.png",
+          "image": "assets/player1.jpg",
       },
       {
           "name": "魔術師ミリア",
@@ -32,7 +32,7 @@ if "initialized" not in st.session_state:
           "max_hp": 70,
           "x": 250,
           "y": 220,
-          "image": "assets/player2.png",
+          "image": "assets/player2.jpg",
       },
       {
           "name": "聖騎士レオン",
@@ -40,7 +40,7 @@ if "initialized" not in st.session_state:
           "max_hp": 120,
           "x": 350,
           "y": 220,
-          "image": "assets/player3.png",
+          "image": "assets/player3.jpg",
       },
   ]
   st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス
@@ -73,16 +73,14 @@ ENEMY_NAMES = {
 }
 
 
-# --- 画像を安全に読み込んで配置・リサイズするヘルパー関数 ---
+# --- 画像を安全に読み込んで配置・リサイズするヘルパー関数（JPG対応） ---
 def paste_image_safely(bg_image, img_path, pos, size=(40, 40), fallback_color=(64, 165, 255)):
-  """指定されたパスの画像を読み込み、背景に貼り付ける。見つからない場合は四角形を描画。"""
+  """指定されたパスのJPG画像を読み込み、背景に貼り付ける。見つからない場合は四角形を描画。"""
   try:
     if os.path.exists(img_path):
-      img = Image.open(img_path).convert("RGBA")
+      img = Image.open(img_path).convert("RGB")
       img = img.resize(size, Image.Resampling.LANCZOS)
-      bg_image.paste(
-          img, (pos[0] - size[0] // 2, pos[1] - size[1] // 2), img
-      )
+      bg_image.paste(img, (pos[0] - size[0] // 2, pos[1] - size[1] // 2))
       return
   except Exception:
     pass
@@ -201,9 +199,9 @@ def render_game_frame():
         [180, 150, 320, HEIGHT - 20], outline=(255, 100, 50), fill=(90, 40, 20)
     )
 
-  # 2. ステージに応じた敵の画像ファイルを動的に指定 (enemy1.png 〜 enemy10.png)
+  # 2. ステージに応じた敵のJPG画像ファイルを動的に指定 (enemy1.jpg 〜 enemy10.jpg)
   current_stage = st.session_state.get("stage", 1)
-  enemy_img_path = f"assets/enemy{current_stage}.png"
+  enemy_img_path = f"assets/enemy{current_stage}.jpg"
 
   paste_image_safely(
       image,

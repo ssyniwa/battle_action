@@ -5,15 +5,13 @@ import streamlit as st
 
 # ページの設定
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：3人パーティ戦",
+    page_title="ダンジョン・ローグアタック：10ステージ制",
     page_icon="⚔️",
     layout="centered",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：パーティ戦 (全10ステージ)")
-st.caption(
-    "3人の仲間を順に操作して魔王軍を打ち破り、第10ステージの深部を目指せ！"
-)
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅")
+st.caption("3人の仲間を率い、次々と立ちはだかる10体の強敵を撃破せよ！")
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
@@ -45,20 +43,34 @@ if "initialized" not in st.session_state:
           "image": "assets/player3.png",
       },
   ]
-  st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス (0, 1, 2)
+  st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス
 
   # ステージに応じた敵の初期化
-  st.session_state.enemy_hp = 80 + (st.session_state.stage * 20)
+  st.session_state.enemy_hp = 70 + (st.session_state.stage * 25)
   st.session_state.enemy_max_hp = st.session_state.enemy_hp
   st.session_state.enemy_x = 250
   st.session_state.enemy_y = 80
   st.session_state.enemy_intent = "line"
   st.session_state.logs = [
-      "第1ステージ開始：暗いダンジョンに魔物が現れた！"
+      "第1ステージ開始：スライムが現れた！仲間と共に戦え。"
   ]
   st.session_state.initialized = True
 
 WIDTH, HEIGHT = 500, 300
+
+# ステージごとの敵の名前リスト（全10種類）
+ENEMY_NAMES = {
+    1: "ぷにぷにスライム",
+    2: "牙をむくゴブリン",
+    3: "うろこ竜の幼体",
+    4: "怪異のスケルトン",
+    5: "闇夜のダークナイト",
+    6: "猛毒の大蜘蛛",
+    7: "炎をまとうキマイラ",
+    8: "冷酷なヴァンパイア",
+    9: "古のレッドドラゴン",
+    10: "魔界の君主・魔王",
+}
 
 
 # --- 画像を安全に読み込んで配置・リサイズするヘルパー関数 ---
@@ -68,7 +80,6 @@ def paste_image_safely(bg_image, img_path, pos, size=(40, 40), fallback_color=(6
     if os.path.exists(img_path):
       img = Image.open(img_path).convert("RGBA")
       img = img.resize(size, Image.Resampling.LANCZOS)
-      # 中央揃えで貼り付け
       bg_image.paste(
           img, (pos[0] - size[0] // 2, pos[1] - size[1] // 2), img
       )
@@ -76,7 +87,7 @@ def paste_image_safely(bg_image, img_path, pos, size=(40, 40), fallback_color=(6
   except Exception:
     pass
 
-  # 画像が無い場合のフォールバック（色付きの丸または四角）
+  # 画像が無い場合のフォールバック描画
   draw = ImageDraw.Draw(bg_image)
   draw.rectangle(
       [
@@ -91,6 +102,9 @@ def paste_image_safely(bg_image, img_path, pos, size=(40, 40), fallback_color=(6
 
 # --- ターン進行＆パーティ行動の処理関数 ---
 def process_turn(action_type, log_msg):
+  current_p = st.session_state.players[st.session_state.current_player_idx]
+  current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
+
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
 
@@ -101,7 +115,7 @@ def process_turn(action_type, log_msg):
     st.session_state.enemy_x += random.choice([0, 15, 25])
   st.session_state.enemy_x = max(80, min(420, st.session_state.enemy_x))
 
-  # 2. 攻撃予告の判定（現在行動中のキャラに直撃するか）
+  # 2. 攻撃予告の判定
   hit = False
   if st.session_state.enemy_intent == "line":
     if abs(current_p["x"] - st.session_state.enemy_x) < 25:
@@ -111,42 +125,44 @@ def process_turn(action_type, log_msg):
       hit = True
 
   if hit:
-    edmg = random.randint(10, 20)
+    edmg = random.randint(10 + st.session_state.stage, 18 + st.session_state.stage)
     current_p["hp"] -= edmg
     st.session_state.logs.insert(
-        0, f"  ⚠️ 敵の攻撃が {current_p['name']} に直撃！ {edmg} のダメージ！"
+        0,
+        f"  ⚠️ {current_enemy_name}の攻撃が {current_p['name']}"
+        f" に直撃！ {edmg} のダメージ！",
     )
   else:
     st.session_state.logs.insert(
-        0, f"  ✨ {current_p['name']} はうまく回避した！"
+        0, f"  ✨ {current_p['name']} は攻撃をうまく回避した！"
     )
 
-  # 3. 敵の次の攻撃予告を決定
+  # 3. 次の攻撃予告を決定
   st.session_state.enemy_intent = random.choice(["line", "area"])
 
-  # 4. 生存している次のプレイヤーに手番を回す
+  # 4. ステージクリア・全滅・次キャラ交代の判定
   alive_indices = [
       i for i, p in enumerate(st.session_state.players) if p["hp"] > 0
   ]
 
   if st.session_state.enemy_hp <= 0:
-    # 敵撃破！次ステージへ
     if st.session_state.stage >= 10:
       st.session_state.game_cleared = True
     else:
+      prev_stage = st.session_state.stage
       st.session_state.stage += 1
       st.session_state.logs.insert(
           0,
-          f"🎉 ステージ {st.session_state.stage - 1} クリア！次のステージへ進む。",
+          f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
+          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！",
       )
-      # ステージが進むにつれて敵のHPが増加
-      st.session_state.enemy_max_hp = 80 + (st.session_state.stage * 20)
+      # ステージごとに敵のHPを強化
+      st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 25)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
   elif not alive_indices:
-    # パーティ全滅
     st.session_state.game_over = True
   else:
-    # 次のメンバーへ順番交代
+    # 次の生存メンバーへ手番を回す
     current_idx = st.session_state.current_player_idx
     while True:
       current_idx = (current_idx + 1) % len(st.session_state.players)
@@ -185,16 +201,19 @@ def render_game_frame():
         [180, 150, 320, HEIGHT - 20], outline=(255, 100, 50), fill=(90, 40, 20)
     )
 
-  # 2. 敵の画像描画
+  # 2. ステージに応じた敵の画像ファイルを動的に指定 (enemy1.png 〜 enemy10.png)
+  current_stage = st.session_state.get("stage", 1)
+  enemy_img_path = f"assets/enemy{current_stage}.png"
+
   paste_image_safely(
       image,
-      "assets/enemy.png",
+      enemy_img_path,
       (st.session_state.enemy_x, st.session_state.enemy_y),
       size=(48, 48),
       fallback_color=(231, 76, 60),
   )
 
-  # 3. 生存しているプレイヤー全員の描画（行動中のキャラは少し明るく/大きく）
+  # 3. 生存しているプレイヤー全員の描画
   for idx, p in enumerate(st.session_state.players):
     if p["hp"] > 0:
       is_current = idx == st.session_state.current_player_idx
@@ -204,13 +223,16 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ステータス表示（敵HPとステージ）
+  # 4. 敵のHPバー描画
   draw.rectangle([320, 15, 480, 32], fill=(40, 40, 40))
   e_w = max(
       0,
       int(
           160
-          * (st.session_state.enemy_hp / max(1, st.session_state.enemy_max_hp))
+          * (
+              st.session_state.get("enemy_hp", 100)
+              / max(1, st.session_state.get("enemy_max_hp", 100))
+          )
       ),
   )
   draw.rectangle([320, 15, 320 + e_w, 32], fill=(231, 76, 60))
@@ -222,15 +244,13 @@ def render_game_frame():
 col_game, col_ctrl = st.columns([3, 2])
 
 with col_game:
-  st.subheader(
-      f"🎮 ステージ {st.session_state.get('stage', 1)} / 10 (敵HP:"
-      f" {st.session_state.get('enemy_hp', 100)})"
-  )
+  current_stage = st.session_state.get("stage", 1)
+  enemy_name = ENEMY_NAMES.get(current_stage, "敵")
+  st.subheader(f"🎮 Stage {current_stage}/10 : {enemy_name}")
   game_img = render_game_frame()
   st.image(game_img, use_container_width=True)
 
 with col_ctrl:
-  # ゲームクリア・ゲームオーバー判定
   is_cleared = st.session_state.get("game_cleared", False)
   is_game_over = st.session_state.get("game_over", False)
 
@@ -260,7 +280,7 @@ with col_ctrl:
     st.markdown("---")
 
     if st.button("🔥 スキル攻撃", use_container_width=True):
-      dmg = random.randint(18, 30)
+      dmg = random.randint(20, 32)
       st.session_state.enemy_hp -= dmg
       process_turn("attack", f"強力なスキル攻撃で {dmg} のダメージを与えた！")
 

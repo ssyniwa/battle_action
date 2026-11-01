@@ -338,4 +338,48 @@ with col_ctrl:
   if not is_cleared and not is_game_over:
     current_p = st.session_state.players[st.session_state.current_player_idx]
 
-    st.markdown(
+    st.markdown(f"### 👥 手番: **{current_p['name']}**")
+    st.progress(max(0.0, current_p["hp"] / current_p["max_hp"]))
+    st.text(f"HP: {current_p['hp']} / {current_p['max_hp']}")
+
+    st.markdown("---")
+    st.text("【移動】自分のエリア内で位置を調整")
+    c1, c2, c3 = st.columns(3)
+    with c2:
+      if st.button("⬆️ 前進", use_container_width=True):
+        current_p["y"] = max(260, current_p["y"] - 30)
+        process_turn("move", "前に踏み込んだ！")
+    with c1:
+      if st.button("⬅️ 左", use_container_width=True):
+        current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)
+        process_turn("move", "エリア内で左へ回避した！")
+    with c3:
+      if st.button("➡️ 右", use_container_width=True):
+        current_p["x"] = min(current_p["max_x"], current_p["x"] + 70)
+        process_turn("move", "エリア内で右へ回避した！")
+
+    st.markdown("---")
+
+    if st.button("🔥 スキル攻撃", use_container_width=True):
+      dmg = random.randint(25, 40)
+      st.session_state.enemy_hp -= dmg
+      process_turn(
+          "attack", f"必殺スキルを発動し、 {dmg} の大ダメージを与えた！"
+      )
+
+  else:
+    if is_cleared:
+      st.success("🎉 全10ステージ踏破！魔王を完全に討伐した！")
+    elif is_game_over:
+      st.error("💀 パーティが全滅しました... ゲームオーバー")
+
+  if st.button("🔄 ゲームリセット", use_container_width=True):
+    for key in list(st.session_state.keys()):
+      del st.session_state[key]
+    st.rerun()
+
+# --- ログ表示 ---
+st.markdown("---")
+st.subheader("📜 バトルログ")
+for log in st.session_state.logs[:4]:
+  st.text(log)

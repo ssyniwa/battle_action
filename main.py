@@ -3,45 +3,46 @@ import random
 from PIL import Image, ImageDraw
 import streamlit as st
 
-# ページの設定（layout="wide" にして画面を最大化・広々使用）
+# ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：ワイド画面版",
+    page_title="ダンジョン・ローグアタック：高画質版",
     page_icon="⚔️",
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（高画質版）")
 st.caption(
-    "3人の仲間を率い、立ちはだかる10体の強敵を撃破せよ！ワイドレイアウト版"
+    "高解像度レンダリングにより、キャラクターや背景の荒れを解消した美しく迫力"
+    "あるバトル画面！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（JPG対応）
+  # プレイヤー3体のパーティ定義（高解像度用の初期座標）
   st.session_state.players = [
       {
           "name": "戦士アレル",
           "hp": 100,
           "max_hp": 100,
-          "x": 180,
-          "y": 240,
+          "x": 360,
+          "y": 480,
           "image": "assets/player1.jpg",
       },
       {
           "name": "魔術師ミリア",
           "hp": 70,
           "max_hp": 70,
-          "x": 300,
-          "y": 240,
+          "x": 600,
+          "y": 480,
           "image": "assets/player2.jpg",
       },
       {
           "name": "聖騎士レオン",
           "hp": 120,
           "max_hp": 120,
-          "x": 420,
-          "y": 240,
+          "x": 840,
+          "y": 480,
           "image": "assets/player3.jpg",
       },
   ]
@@ -50,15 +51,16 @@ if "initialized" not in st.session_state:
   # ステージに応じた敵の初期化
   st.session_state.enemy_hp = 70 + (st.session_state.stage * 25)
   st.session_state.enemy_max_hp = st.session_state.enemy_hp
-  st.session_state.enemy_x = 300
-  st.session_state.enemy_y = 90
+  st.session_state.enemy_x = 600
+  st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
   st.session_state.logs = [
       "第1ステージ開始：スライムが現れた！仲間と共に戦え。"
   ]
   st.session_state.initialized = True
 
-WIDTH, HEIGHT = 600, 350
+# ★ 解像度を従来の2倍（1200x700）に引き上げ、くっきり綺麗に表示
+WIDTH, HEIGHT = 1200, 700
 
 # ステージごとの敵の名前リスト（全10種類）
 ENEMY_NAMES = {
@@ -75,14 +77,15 @@ ENEMY_NAMES = {
 }
 
 
-# --- 画像を安全に読み込んで配置・リサイズするヘルパー関数 ---
+# --- 画像を安全に読み込み、滑らか（BICUBIC）にリサイズして配置するヘルパー関数 ---
 def paste_image_safely(
-    bg_image, img_path, pos, size=(80, 80), fallback_color=(64, 165, 255)
+    bg_image, img_path, pos, size=(160, 160), fallback_color=(64, 165, 255)
 ):
   try:
     if os.path.exists(img_path):
       img = Image.open(img_path).convert("RGB")
-      img = img.resize(size, Image.Resampling.LANCZOS)
+      # ★ BICUBIC を使用して滑らかで高画質な縮小・拡大を行う
+      img = img.resize(size, Image.Resampling.BICUBIC)
       bg_image.paste(img, (pos[0] - size[0] // 2, pos[1] - size[1] // 2))
       return
   except Exception:
@@ -109,17 +112,17 @@ def process_turn(action_type, log_msg):
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
 
   if current_p["x"] < st.session_state.enemy_x:
-    st.session_state.enemy_x -= random.choice([0, 20, 35])
+    st.session_state.enemy_x -= random.choice([0, 40, 70])
   else:
-    st.session_state.enemy_x += random.choice([0, 20, 35])
-  st.session_state.enemy_x = max(100, min(500, st.session_state.enemy_x))
+    st.session_state.enemy_x += random.choice([0, 40, 70])
+  st.session_state.enemy_x = max(200, min(1000, st.session_state.enemy_x))
 
   hit = False
   if st.session_state.enemy_intent == "line":
-    if abs(current_p["x"] - st.session_state.enemy_x) < 35:
+    if abs(current_p["x"] - st.session_state.enemy_x) < 70:
       hit = True
   elif st.session_state.enemy_intent == "area":
-    if 200 < current_p["x"] < 400:
+    if 400 < current_p["x"] < 800:
       hit = True
 
   if hit:
@@ -167,81 +170,83 @@ def process_turn(action_type, log_msg):
   st.rerun()
 
 
-# --- ゲーム画面の描画関数 ---
+# --- 高画質ゲーム画面の描画関数 ---
 def render_game_frame():
+  # 高解像度（1200x700）のベース画像を作成
   image = Image.new("RGB", (WIDTH, HEIGHT), color=(15, 17, 26))
   draw = ImageDraw.Draw(image)
 
-  for x in range(0, WIDTH, 50):
-    draw.line([(x, 0), (x, HEIGHT)], fill=(28, 33, 48), width=1)
-  for y in range(0, HEIGHT, 50):
-    draw.line([(0, y), (WIDTH, y)], fill=(28, 33, 48), width=1)
+  # 背景グリッド（高解像度対応の間隔）
+  for x in range(0, WIDTH, 100):
+    draw.line([(x, 0), (x, HEIGHT)], fill=(28, 33, 48), width=2)
+  for y in range(0, HEIGHT, 100):
+    draw.line([(0, y), (WIDTH, y)], fill=(28, 33, 48), width=2)
 
+  # 1. 敵の攻撃予告エリア
   if st.session_state.enemy_intent == "line":
     draw.rectangle(
         [
-            st.session_state.enemy_x - 30,
-            st.session_state.enemy_y + 35,
-            st.session_state.enemy_x + 30,
-            HEIGHT - 20,
+            st.session_state.enemy_x - 60,
+            st.session_state.enemy_y + 70,
+            st.session_state.enemy_x + 60,
+            HEIGHT - 40,
         ],
         outline=(255, 80, 80),
         fill=(80, 20, 20),
     )
   elif st.session_state.enemy_intent == "area":
     draw.rectangle(
-        [200, 150, 400, HEIGHT - 20], outline=(255, 100, 50), fill=(90, 40, 20)
+        [400, 300, 800, HEIGHT - 40], outline=(255, 100, 50), fill=(90, 40, 20)
     )
 
   current_stage = st.session_state.get("stage", 1)
   enemy_img_path = f"assets/enemy{current_stage}.jpg"
 
+  # 2. 敵の画像描画（高解像度：192x192サイズできれいに配置）
   paste_image_safely(
       image,
       enemy_img_path,
       (st.session_state.enemy_x, st.session_state.enemy_y),
-      size=(96, 96),
+      size=(192, 192),
       fallback_color=(231, 76, 60),
   )
 
+  # 3. プレイヤーの画像描画（高解像度：行動中は180x180、他は140x140）
   for idx, p in enumerate(st.session_state.players):
     if p["hp"] > 0:
       is_current = idx == st.session_state.current_player_idx
-      size = (90, 90) if is_current else (70, 70)
+      size = (180, 180) if is_current else (140, 140)
       colors = [(64, 165, 255), (46, 204, 113), (241, 196, 15)]
       paste_image_safely(
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  draw.rectangle([400, 20, 570, 38], fill=(40, 40, 40))
+  # 4. 高解像度なHPバーの描画
+  draw.rectangle([800, 40, 1140, 76], fill=(40, 40, 40))
   e_w = max(
       0,
       int(
-          170
+          340
           * (
               st.session_state.get("enemy_hp", 100)
               / max(1, st.session_state.get("enemy_max_hp", 100))
           )
       ),
   )
-  draw.rectangle([400, 20, 400 + e_w, 38], fill=(231, 76, 60))
-
-  # 画面全体の拡大率（3倍）[cite: 2]
-  scale_factor = 3
-  image = image.resize(
-      (WIDTH * scale_factor, HEIGHT * scale_factor), Image.Resampling.NEAREST
-  )
+  draw.rectangle([800, 40, 800 + e_w, 76], fill=(231, 76, 60))
 
   return image
 
 
-# --- ワイド画面用レイアウト配置（左右のバランスを調整） ---
+# --- ワイド画面用レイアウト配置 ---
 col_game, col_ctrl = st.columns([7, 3])
 
 with col_game:
   current_stage = st.session_state.get("stage", 1)
   enemy_name = ENEMY_NAMES.get(current_stage, "敵")
   st.subheader(f"🎮 Stage {current_stage}/10 : {enemy_name}")
+
+  # 高画質フレームを取得してそのまま表示（ブラウザでの無理な拡大を防ぎ、くっきり表示）
   game_img = render_game_frame()
   st.image(game_img, use_container_width=True)
 
@@ -261,15 +266,15 @@ with col_ctrl:
     c1, c2, c3 = st.columns(3)
     with c2:
       if st.button("⬆️ 前進", use_container_width=True):
-        current_p["y"] = max(130, current_p["y"] - 20)
+        current_p["y"] = max(260, current_p["y"] - 40)
         process_turn("move", "前に踏み込んだ！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
-        current_p["x"] = max(60, current_p["x"] - 45)
+        current_p["x"] = max(120, current_p["x"] - 90)
         process_turn("move", "左へ回避した！")
     with c3:
       if st.button("➡️ 右", use_container_width=True):
-        current_p["x"] = min(540, current_p["x"] + 45)
+        current_p["x"] = min(1080, current_p["x"] + 90)
         process_turn("move", "右へ回避した！")
 
     st.markdown("---")

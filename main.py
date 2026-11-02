@@ -5,22 +5,22 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：キャラ別攻撃エフェクト版",
+    page_title="ダンジョン・ローグアタック：弾道修正版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（キャラ別攻撃版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（弾道修正版）"
 )
 st.caption(
-    "3人の仲間それぞれが固有のカラーと攻撃エフェクトで敵を撃破！ステージが上がる強敵を突破せよ！"
+    "行動したキャラ固有のカラー弾が正確に敵へ放たれるよう修正された最新バージョン！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（専用の攻撃カラー設定を追加）
+  # プレイヤー3体のパーティ定義
   st.session_state.players = [
       {
           "name": "戦士アレル",
@@ -68,10 +68,11 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
 
-  # アニメーション用の状態管理
+  # ★ アニメーション用の状態管理（発射したキャラクターのインデックスも保持）
   st.session_state.anim_type = "none"
   st.session_state.anim_step = 0
   st.session_state.anim_color = (255, 255, 255)
+  st.session_state.anim_player_idx = 0
 
   st.session_state.logs = [
       "第1ステージ開始：スライムが現れた！仲間たちの連携技で撃破せよ。"
@@ -122,15 +123,19 @@ def paste_image_safely(
 
 # --- ターン進行＆キャラクター別アニメーションの処理関数 ---
 def process_turn(action_type, log_msg):
-  current_p = st.session_state.players[st.session_state.current_player_idx]
+  # 行動を開始した瞬間のプレイヤーインデックスをしっかり記録しておく
+  acting_idx = st.session_state.current_player_idx
+  current_p = st.session_state.players[acting_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
+  # アニメーションタイプと発射キャラクターを固定でセッションに保持
   if action_type == "attack":
     st.session_state.anim_type = "player_attack"
-    st.session_state.anim_color = current_p["color"]  # キャラ固有の色を反映
+    st.session_state.anim_color = current_p["color"]
+    st.session_state.anim_player_idx = acting_idx
   else:
     st.session_state.anim_type = "enemy_attack"
-    st.session_state.anim_color = (255, 50, 50)  # 敵の攻撃は赤
+    st.session_state.anim_color = (255, 50, 50)
 
   if st.session_state.anim_step < 3:
     st.session_state.anim_step += 1
@@ -302,15 +307,17 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ★ キャラクター別カラーアニメーション弾道の描画
+  # 4. ★ 修正済みのキャラクター別カラーアニメーション弾道の描画
   anim_type = st.session_state.get("anim_type", "none")
   anim_step = st.session_state.get("anim_step", 0)
   anim_color = st.session_state.get("anim_color", (255, 255, 255))
+  anim_p_idx = st.session_state.get("anim_player_idx", 0)
 
   if anim_type != "none" and anim_step > 0:
-    current_p = st.session_state.players[st.session_state.current_player_idx]
+    # ターンが変わっていても、アクションを実行した当時のキャラクター情報を正しく取得
+    acting_p = st.session_state.players[anim_p_idx]
     ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
-    px, py = current_p["x"], current_p["y"]
+    px, py = acting_p["x"], acting_p["y"]
 
     progress_ratio = anim_step / 3.0
 
@@ -321,11 +328,11 @@ def render_game_frame():
     elif anim_type == "player_attack":
       bx = int(px + (ex - px) * progress_ratio)
       by = int(py + (ey - py) * progress_ratio)
-      # キャラごとの固有カラーでエフェクト弾を描画
+      # 正しい発射キャラのカラーと固有アクション名を表示
       draw.ellipse([bx - 20, by - 20, bx + 20, by + 20], fill=anim_color)
       draw.text(
           (bx + 25, by - 10),
-          f"{current_p['action_name']}",
+          f"{acting_p['action_name']}",
           fill=anim_color,
       )
 

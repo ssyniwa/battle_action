@@ -5,58 +5,64 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：弾道修正版",
+    page_title="ダンジョン・ローグアタック：戦略スキル版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（弾道修正版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（戦略スキル版）"
 )
 st.caption(
-    "行動したキャラ固有のカラー弾が正確に敵へ放たれるよう修正された最新バージョン！"
+    "魔術師は遠距離から、戦士と騎士は近距離で戦闘！騎士は移動力抜群！回復や防御スキルを駆使せよ！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義
+  # プレイヤー3体のパーティ定義（配置・移動範囲・スキルを最適化）
   st.session_state.players = [
       {
           "name": "戦士アレル",
           "hp": 100,
           "max_hp": 100,
-          "x": 350,
-          "y": 480,
+          "x": 400,
+          "y": 500,
           "min_x": 200,
-          "max_x": 450,
+          "max_x": 600,
+          "move_step": 70,  # 通常の移動量
           "image": "assets/player1.jpg",
-          "color": (255, 60, 60),  # 赤（戦士の斬撃）
+          "color": (255, 60, 60),  # 赤
           "action_name": "猛撃の剣気",
+          "sub_skill": "ガードスタンス",  # 防御スキル
       },
       {
           "name": "魔術師ミリア",
           "hp": 70,
           "max_hp": 70,
           "x": 600,
-          "y": 480,
-          "min_x": 480,
-          "max_x": 720,
+          "y": 600,  # 敵から一番遠い後方に配置
+          "min_x": 300,
+          "max_x": 900,
+          "move_step": 70,
           "image": "assets/player2.jpg",
-          "color": (60, 150, 255),  # 青（魔術師の魔力弾）
+          "color": (60, 150, 255),  # 青
           "action_name": "魔力ブラスト",
+          "sub_skill": "ヒール魔法",  # 回復スキル
       },
       {
           "name": "聖騎士レオン",
           "hp": 120,
           "max_hp": 120,
-          "x": 850,
+          "x": 800,
           "y": 480,
-          "min_x": 750,
-          "max_x": 1000,
+          "min_x": 150,
+          "max_x": 1050,
+          "move_step": 120,  # ★ 騎士は移動距離を多めに設定！
           "image": "assets/player3.jpg",
-          "color": (255, 220, 50),  # 黄（聖騎士の聖光弾）
+          "color": (255, 220, 50),  # 黄
           "action_name": "ホーリーライト",
+          "sub_skill": "聖域の守護",  # 全体防御・軽減スキル
       },
   ]
   st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス
@@ -68,14 +74,14 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
 
-  # ★ アニメーション用の状態管理（発射したキャラクターのインデックスも保持）
+  # アニメーション用の状態管理
   st.session_state.anim_type = "none"
   st.session_state.anim_step = 0
   st.session_state.anim_color = (255, 255, 255)
   st.session_state.anim_player_idx = 0
 
   st.session_state.logs = [
-      "第1ステージ開始：スライムが現れた！仲間たちの連携技で撃破せよ。"
+      "第1ステージ開始：魔術師は後方から、戦士と騎士は前線で敵に立ち向かえ！"
   ]
   st.session_state.initialized = True
 
@@ -121,17 +127,24 @@ def paste_image_safely(
   )
 
 
-# --- ターン進行＆キャラクター別アニメーションの処理関数 ---
+# --- ターン進行＆スキル・アニメーションの処理関数 ---
 def process_turn(action_type, log_msg):
-  # 行動を開始した瞬間のプレイヤーインデックスをしっかり記録しておく
   acting_idx = st.session_state.current_player_idx
   current_p = st.session_state.players[acting_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
-  # アニメーションタイプと発射キャラクターを固定でセッションに保持
+  # アクションに応じたアニメーション設定
   if action_type == "attack":
     st.session_state.anim_type = "player_attack"
     st.session_state.anim_color = current_p["color"]
+    st.session_state.anim_player_idx = acting_idx
+  elif action_type == "heal":
+    st.session_state.anim_type = "player_heal"
+    st.session_state.anim_color = (50, 255, 100)  # 緑色の回復エフェクト
+    st.session_state.anim_player_idx = acting_idx
+  elif action_type == "buff":
+    st.session_state.anim_type = "player_buff"
+    st.session_state.anim_color = (255, 255, 100)  # 黄色の防御エフェクト
     st.session_state.anim_player_idx = acting_idx
   else:
     st.session_state.anim_type = "enemy_attack"
@@ -145,7 +158,7 @@ def process_turn(action_type, log_msg):
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
 
-  # 敵の移動処理（ステージが高いほど素早く激しく動く）
+  # 敵の移動処理
   move_range = min(70, 30 + (st.session_state.stage * 4))
   if current_p["x"] < st.session_state.enemy_x:
     st.session_state.enemy_x -= random.choice([0, move_range // 2, move_range])
@@ -153,7 +166,7 @@ def process_turn(action_type, log_msg):
     st.session_state.enemy_x += random.choice([0, move_range // 2, move_range])
   st.session_state.enemy_x = max(250, min(950, st.session_state.enemy_x))
 
-  # --- ステージに応じた凶悪な攻撃範囲の判定 ---
+  # --- 攻撃範囲の判定 ---
   hit = False
   intent = st.session_state.enemy_intent
 
@@ -176,18 +189,25 @@ def process_turn(action_type, log_msg):
     edmg = random.randint(
         12 + (st.session_state.stage * 3), 22 + (st.session_state.stage * 4)
     )
+    # 防御スキル発動中の場合は被ダメージを軽減
+    if action_type == "buff":
+      edmg = int(edmg * 0.4)
+      st.session_state.logs.insert(
+          0, f"  🛡️ 防御スキルによりダメージを大幅に軽減した！"
+      )
+
     current_p["hp"] -= edmg
     st.session_state.logs.insert(
         0,
         f"  ⚠️ {current_enemy_name}の攻撃が {current_p['name']}"
-        f" に直撃！ {edmg} の大ダメージ！",
+        f" に直撃！ {edmg} のダメージ！",
     )
   else:
     st.session_state.logs.insert(
         0, f"  ✨ {current_p['name']} は飛来する攻撃を華麗にかわした！"
     )
 
-  # --- ステージ進行度に応じた攻撃パターンの抽選変化 ---
+  # --- 次の攻撃パターンの抽選 ---
   stage = st.session_state.stage
   if stage <= 2:
     available_intents = ["line"]
@@ -214,7 +234,7 @@ def process_turn(action_type, log_msg):
       st.session_state.logs.insert(
           0,
           f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
-          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！さらに手強い攻撃に注意せよ！",
+          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！",
       )
       st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 35)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
@@ -307,14 +327,13 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ★ 修正済みのキャラクター別カラーアニメーション弾道の描画
+  # 4. アニメーション弾道・スキルの描画
   anim_type = st.session_state.get("anim_type", "none")
   anim_step = st.session_state.get("anim_step", 0)
   anim_color = st.session_state.get("anim_color", (255, 255, 255))
   anim_p_idx = st.session_state.get("anim_player_idx", 0)
 
   if anim_type != "none" and anim_step > 0:
-    # ターンが変わっていても、アクションを実行した当時のキャラクター情報を正しく取得
     acting_p = st.session_state.players[anim_p_idx]
     ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
     px, py = acting_p["x"], acting_p["y"]
@@ -328,12 +347,29 @@ def render_game_frame():
     elif anim_type == "player_attack":
       bx = int(px + (ex - px) * progress_ratio)
       by = int(py + (ey - py) * progress_ratio)
-      # 正しい発射キャラのカラーと固有アクション名を表示
       draw.ellipse([bx - 20, by - 20, bx + 20, by + 20], fill=anim_color)
       draw.text(
           (bx + 25, by - 10),
           f"{acting_p['action_name']}",
           fill=anim_color,
+      )
+    elif anim_type == "player_heal":
+      # 回復の緑エフェクト
+      draw.ellipse(
+          [px - 50, py - 50, px + 50, py + 50], outline=(50, 255, 100), width=6
+      )
+      draw.text(
+          (px - 30, py - 70), "✨ HP RECOVER", fill=(50, 255, 100)
+      )
+    elif anim_type == "player_buff":
+      # 防御の黄エフェクト
+      draw.rectangle(
+          [px - 60, py - 60, px + 60, py + 60],
+          outline=(255, 255, 100),
+          width=6,
+      )
+      draw.text(
+          (px - 30, py - 70), "🛡️ GUARD UP", fill=(255, 255, 100)
       )
 
   # 5. HPバーの描画
@@ -370,6 +406,7 @@ with col_ctrl:
 
   if not is_cleared and not is_game_over:
     current_p = st.session_state.players[st.session_state.current_player_idx]
+    step = current_p["move_step"]  # キャラごとの移動距離（騎士は大きい）
 
     st.markdown(
         f"### 👥 手番: <span style='color:rgb{current_p['color']}'>"
@@ -380,7 +417,7 @@ with col_ctrl:
     st.text(f"HP: {current_p['hp']} / {current_p['max_hp']}")
 
     st.markdown("---")
-    st.text("【移動】自分のエリア内で位置を調整")
+    st.text(f"【移動】エリア内移動 (移動力: {step})")
     c1, c2, c3 = st.columns(3)
     with c2:
       if st.button("⬆️ 前進", use_container_width=True):
@@ -388,17 +425,19 @@ with col_ctrl:
         process_turn("move", "前に踏み込み、攻撃を回避した！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
-        current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)
-        process_turn("move", "エリア内で左へ回避した！")
+        current_p["x"] = max(current_p["min_x"], current_p["x"] - step)
+        process_turn("move", f"エリア内で左へ大きく回避した！")
     with c3:
       if st.button("➡️ 右", use_container_width=True):
-        current_p["x"] = min(current_p["max_x"], current_p["x"] + 70)
-        process_turn("move", "エリア内で右へ回避した！")
+        current_p["x"] = min(current_p["max_x"], current_p["x"] + step)
+        process_turn("move", f"エリア内で右へ大きく回避した！")
 
     st.markdown("---")
+    st.text("【スキル選択】")
 
+    # 1. 攻撃スキルボタン
     if st.button(
-        f"🔥 {current_p['action_name']}を発動！", use_container_width=True
+        f"🔥 {current_p['action_name']} (攻撃)", use_container_width=True
     ):
       dmg = random.randint(25, 40)
       st.session_state.enemy_hp -= dmg
@@ -406,6 +445,36 @@ with col_ctrl:
           "attack",
           f"{current_p['action_name']}を放ち、敵に {dmg} のダメージを与えた！",
       )
+
+    # 2. 回復または防御スキルボタン（キャラごとに分岐）
+    if current_p["name"] == "魔術師ミリア":
+      if st.button("💚 ヒール魔法 (味方回復)", use_container_width=True):
+        heal_val = random.randint(25, 40)
+        # 最もHPが減っている味方を回復
+        target = min(
+            st.session_state.players,
+            key=lambda p: p["hp"] / max(1, p["max_hp"]),
+        )
+        target["hp"] = min(target["max_hp"], target["hp"] + heal_val)
+        process_turn(
+            "heal", f"ヒール魔法で {target['name']} のHPを {heal_val} 回復した！"
+        )
+    elif current_p["name"] == "戦士アレル":
+      if st.button("🛡️ ガードスタンス (防御)", use_container_width=True):
+        process_turn(
+            "buff",
+            "ガードスタンスを展開し、次の敵からのダメージを大幅に軽減する！",
+        )
+    elif current_p["name"] == "聖騎士レオン":
+      if st.button("✨ 聖域の守護 (全体守備)", use_container_width=True):
+        # 騎士は自分とパーティのHPを少し回復しつつ防御
+        current_p["hp"] = min(
+            current_p["max_hp"], current_p["hp"] + 20
+        )
+        process_turn(
+            "buff",
+            "聖域の守護を発動！自身のHPを回復し、鉄壁の守りを固めた！",
+        )
 
   else:
     if is_cleared:

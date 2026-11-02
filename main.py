@@ -5,16 +5,16 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：アニメーション軌跡版",
+    page_title="ダンジョン・ローグアタック：弾道アニメーション版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（アニメーション軌跡版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（弾道アニメーション版）"
 )
 st.caption(
-    "ステージが上がるごとに敵の攻撃が凶悪化！攻撃ドットがゆったりとした軌跡（アニメーション風）で移動します。"
+    "敵味方の攻撃が弾道エフェクトとして飛び交う！ステージが進むごとに凶悪さを増す強敵を打ち破れ！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
@@ -62,10 +62,12 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
   
-  # 攻撃アニメーション用のドット位置（初期値）
-  st.session_state.anim_step = 0
+  # アニメーション用の軌跡エフェクト状態 ('none', 'enemy_attack', 'player_attack')
+  st.session_state.anim_type = "none"
+  st.session_state.anim_progress = 0.0
+
   st.session_state.logs = [
-      "第1ステージ開始：スライムが現れた！凶悪な攻撃を避けながら戦え。"
+      "第1ステージ開始：スライムが現れた！弾道を見極めて回避し反撃せよ。"
   ]
   st.session_state.initialized = True
 
@@ -116,6 +118,13 @@ def process_turn(action_type, log_msg):
   current_p = st.session_state.players[st.session_state.current_player_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
+  # アクションに応じたアニメーション軌跡の設定
+  if action_type == "attack":
+    st.session_state.anim_type = "player_attack"
+  else:
+    st.session_state.anim_type = "enemy_attack"
+  st.session_state.anim_progress = 1.0  # 弾道を描画する進行度
+
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
 
@@ -144,7 +153,7 @@ def process_turn(action_type, log_msg):
     ):
       hit = True
   elif intent == "all_range":  # 全画面一閃（ステージ9・10）
-    hit = True  # 回避不能の超絶ダメージ
+    hit = True  # ほぼ回避不能の超絶ダメージ
 
   if hit:
     edmg = random.randint(
@@ -153,12 +162,12 @@ def process_turn(action_type, log_msg):
     current_p["hp"] -= edmg
     st.session_state.logs.insert(
         0,
-        f"  ⚠️ {current_enemy_name}の凶悪な攻撃が {current_p['name']}"
-        f" に直撃！ {edmg} のダメージ！",
+        f"  ⚠️ {current_enemy_name}の凶悪な攻撃弾が {current_p['name']}"
+        f" に直撃！ {edmg} の大ダメージ！",
     )
   else:
     st.session_state.logs.insert(
-        0, f"  ✨ {current_p['name']} は敵の攻撃を華麗にかわした！"
+        0, f"  ✨ {current_p['name']} は飛来する攻撃弾を華麗にかわした！"
     )
 
   # --- ステージ進行度に応じた攻撃パターンの抽選変化 ---
@@ -173,9 +182,6 @@ def process_turn(action_type, log_msg):
     available_intents = ["line", "wide_blast", "cross_laser", "all_range"]
 
   st.session_state.enemy_intent = random.choice(available_intents)
-  
-  # アニメーションステップを進める（ゆったりした軌跡表現用）
-  st.session_state.anim_step = (st.session_state.anim_step + 1) % 4
 
   # ステージクリア・全滅・次キャラ交代の判定
   alive_indices = [
@@ -191,7 +197,7 @@ def process_turn(action_type, log_msg):
       st.session_state.logs.insert(
           0,
           f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
-          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！さらに凶悪な攻撃に注意せよ！",
+          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！さらに凶悪な攻撃弾に注意せよ！",
       )
       st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 35)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
@@ -284,22 +290,32 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ★ 攻撃を表すドットのゆったりとしたアニメーション軌跡の描画
-  step = st.session_state.get("anim_step", 0)
-  ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
-  
-  # 敵から放たれる魔法弾ドット（段階的に下に移動するアニメーション軌跡）
-  for i in range(3):
-    dot_y = ey + 90 + ((step + i * 30) % 300)
-    dot_x = ex + ((i - 1) * 40)
-    draw.ellipse([dot_x - 8, dot_y - 8, dot_x + 8, dot_y + 8], fill=(255, 100, 255))
+  # 4. ★ 敵味方の攻撃を表すドット（弾道アニメーション）の描画
+  anim_type = st.session_state.get("anim_type", "none")
+  if anim_type != "none":
+    current_p = st.session_state.players[st.session_state.current_player_idx]
+    ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
+    px, py = current_p["x"], current_p["y"]
 
-  # 味方から放たれる攻撃ドット（上に向かって進む軌跡）
-  current_p = st.session_state.players[st.session_state.current_player_idx]
-  px, py = current_p["x"], current_p["y"]
-  for i in range(2):
-    p_dot_y = py - 40 - ((step * 25 + i * 40) % 150)
-    draw.ellipse([px - 6, p_dot_y - 6, px + 6, p_dot_y + 6], fill=(100, 220, 255))
+    if anim_type == "enemy_attack":
+      # 敵から味方へ向かう赤色の複数の攻撃弾
+      steps = 6
+      for i in range(1, steps + 1):
+        ratio = i / steps
+        bx = int(ex + (px - ex) * ratio)
+        by = int(ey + (py - ey) * ratio)
+        draw.ellipse([bx - 12, by - 12, bx + 12, by + 12], fill=(255, 50, 50))
+    elif anim_type == "player_attack":
+      # 味方から敵へ向かう青/黄色のエネルギー弾
+      steps = 6
+      for i in range(1, steps + 1):
+        ratio = i / steps
+        bx = int(px + (ex - px) * ratio)
+        by = int(py + (ey - py) * ratio)
+        draw.ellipse([bx - 14, by - 14, bx + 14, by + 14], fill=(50, 200, 255))
+
+    # 1回描画したらアニメーション状態を通常に戻す
+    st.session_state.anim_type = "none"
 
   # 5. HPバーの描画
   draw.rectangle([800, 40, 1140, 76], fill=(40, 40, 40))
@@ -346,7 +362,7 @@ with col_ctrl:
     with c2:
       if st.button("⬆️ 前進", use_container_width=True):
         current_p["y"] = max(260, current_p["y"] - 30)
-        process_turn("move", "前に踏み込んだ！")
+        process_turn("move", "前に踏み込み、攻撃弾をやり過ごした！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
         current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)
@@ -362,7 +378,8 @@ with col_ctrl:
       dmg = random.randint(25, 40)
       st.session_state.enemy_hp -= dmg
       process_turn(
-          "attack", f"必殺スキルを発動し、 {dmg} の大ダメージを与えた！"
+          "attack",
+          f"エネルギー弾を発射し、敵に {dmg} のダメージを与えた！",
       )
 
   else:
@@ -381,4 +398,3 @@ st.markdown("---")
 st.subheader("📜 バトルログ")
 for log in st.session_state.logs[:4]:
   st.text(log)
-

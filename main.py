@@ -5,22 +5,22 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：複数ステップアニメーション版",
+    page_title="ダンジョン・ローグアタック：キャラ別攻撃エフェクト版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（アニメーション版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（キャラ別攻撃版）"
 )
 st.caption(
-    "行動するたびに弾道アニメーションのステップが進行！強敵の攻撃をかいくぐれ！"
+    "3人の仲間それぞれが固有のカラーと攻撃エフェクトで敵を撃破！ステージが上がる強敵を突破せよ！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（重なり防止エリア設定済み）
+  # プレイヤー3体のパーティ定義（専用の攻撃カラー設定を追加）
   st.session_state.players = [
       {
           "name": "戦士アレル",
@@ -31,6 +31,8 @@ if "initialized" not in st.session_state:
           "min_x": 200,
           "max_x": 450,
           "image": "assets/player1.jpg",
+          "color": (255, 60, 60),  # 赤（戦士の斬撃）
+          "action_name": "猛撃の剣気",
       },
       {
           "name": "魔術師ミリア",
@@ -41,6 +43,8 @@ if "initialized" not in st.session_state:
           "min_x": 480,
           "max_x": 720,
           "image": "assets/player2.jpg",
+          "color": (60, 150, 255),  # 青（魔術師の魔力弾）
+          "action_name": "魔力ブラスト",
       },
       {
           "name": "聖騎士レオン",
@@ -51,6 +55,8 @@ if "initialized" not in st.session_state:
           "min_x": 750,
           "max_x": 1000,
           "image": "assets/player3.jpg",
+          "color": (255, 220, 50),  # 黄（聖騎士の聖光弾）
+          "action_name": "ホーリーライト",
       },
   ]
   st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス
@@ -62,12 +68,13 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
 
-  # ★ アニメーションの進行ステップ管理 (0:なし, 1〜3: 弾が移動する段階)
+  # アニメーション用の状態管理
   st.session_state.anim_type = "none"
   st.session_state.anim_step = 0
+  st.session_state.anim_color = (255, 255, 255)
 
   st.session_state.logs = [
-      "第1ステージ開始：スライムが現れた！アニメーション弾道を見極めて戦え。"
+      "第1ステージ開始：スライムが現れた！仲間たちの連携技で撃破せよ。"
   ]
   st.session_state.initialized = True
 
@@ -113,22 +120,22 @@ def paste_image_safely(
   )
 
 
-# --- ターン進行＆複数ステップアニメーションの処理関数 ---
+# --- ターン進行＆キャラクター別アニメーションの処理関数 ---
 def process_turn(action_type, log_msg):
   current_p = st.session_state.players[st.session_state.current_player_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
-  # ★ アクションの種類に応じてアニメーションタイプを設定し、ステップを初期化(1から開始)
   if action_type == "attack":
     st.session_state.anim_type = "player_attack"
+    st.session_state.anim_color = current_p["color"]  # キャラ固有の色を反映
   else:
     st.session_state.anim_type = "enemy_attack"
+    st.session_state.anim_color = (255, 50, 50)  # 敵の攻撃は赤
 
-  # すでにアニメーションステップの途中の場合、ボタンを押すごとに進める (最大3ステップ)
   if st.session_state.anim_step < 3:
     st.session_state.anim_step += 1
   else:
-    st.session_state.anim_step = 1  # ループまたはリセット
+    st.session_state.anim_step = 1
 
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
@@ -145,19 +152,19 @@ def process_turn(action_type, log_msg):
   hit = False
   intent = st.session_state.enemy_intent
 
-  if intent == "line":  # 直線単体攻撃
+  if intent == "line":
     if abs(current_p["x"] - st.session_state.enemy_x) < 70:
       hit = True
-  elif intent == "wide_blast":  # 広範囲ブラスト（ステージ3以上）
+  elif intent == "wide_blast":
     if abs(current_p["x"] - st.session_state.enemy_x) < 180:
       hit = True
-  elif intent == "cross_laser":  # 十字レーザー（ステージ6以上）
+  elif intent == "cross_laser":
     if (
         abs(current_p["x"] - st.session_state.enemy_x) < 50
         or 450 < current_p["y"] < 550
     ):
       hit = True
-  elif intent == "all_range":  # 全画面一閃（ステージ9・10）
+  elif intent == "all_range":
     hit = True
 
   if hit:
@@ -167,12 +174,12 @@ def process_turn(action_type, log_msg):
     current_p["hp"] -= edmg
     st.session_state.logs.insert(
         0,
-        f"  ⚠️ {current_enemy_name}の攻撃弾が {current_p['name']}"
+        f"  ⚠️ {current_enemy_name}の攻撃が {current_p['name']}"
         f" に直撃！ {edmg} の大ダメージ！",
     )
   else:
     st.session_state.logs.insert(
-        0, f"  ✨ {current_p['name']} は飛来する攻撃弾を華麗にかわした！"
+        0, f"  ✨ {current_p['name']} は飛来する攻撃を華麗にかわした！"
     )
 
   # --- ステージ進行度に応じた攻撃パターンの抽選変化 ---
@@ -202,7 +209,7 @@ def process_turn(action_type, log_msg):
       st.session_state.logs.insert(
           0,
           f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
-          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！",
+          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！さらに手強い攻撃に注意せよ！",
       )
       st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 35)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
@@ -295,35 +302,31 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ★ 複数ステップで進む弾道アニメーションの描画
+  # 4. ★ キャラクター別カラーアニメーション弾道の描画
   anim_type = st.session_state.get("anim_type", "none")
   anim_step = st.session_state.get("anim_step", 0)
+  anim_color = st.session_state.get("anim_color", (255, 255, 255))
 
   if anim_type != "none" and anim_step > 0:
     current_p = st.session_state.players[st.session_state.current_player_idx]
     ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
     px, py = current_p["x"], current_p["y"]
 
-    # ステップが進むごとに比率（0.33 -> 0.66 -> 1.0）が変わることで弾が移動する
     progress_ratio = anim_step / 3.0
 
     if anim_type == "enemy_attack":
       bx = int(ex + (px - ex) * progress_ratio)
       by = int(ey + (py - ey) * progress_ratio)
       draw.ellipse([bx - 16, by - 16, bx + 16, by + 16], fill=(255, 50, 50))
-      draw.text(
-          (bx + 20, by - 10),
-          f"Step {anim_step}/3",
-          fill=(255, 255, 255),
-      )
     elif anim_type == "player_attack":
       bx = int(px + (ex - px) * progress_ratio)
       by = int(py + (ey - py) * progress_ratio)
-      draw.ellipse([bx - 18, by - 18, bx + 18, by + 18], fill=(50, 200, 255))
+      # キャラごとの固有カラーでエフェクト弾を描画
+      draw.ellipse([bx - 20, by - 20, bx + 20, by + 20], fill=anim_color)
       draw.text(
-          (bx + 20, by - 10),
-          f"Step {anim_step}/3",
-          fill=(255, 255, 255),
+          (bx + 25, by - 10),
+          f"{current_p['action_name']}",
+          fill=anim_color,
       )
 
   # 5. HPバーの描画
@@ -361,7 +364,11 @@ with col_ctrl:
   if not is_cleared and not is_game_over:
     current_p = st.session_state.players[st.session_state.current_player_idx]
 
-    st.markdown(f"### 👥 手番: **{current_p['name']}**")
+    st.markdown(
+        f"### 👥 手番: <span style='color:rgb{current_p['color']}'>"
+        f"{current_p['name']}</span>",
+        unsafe_allow_html=True,
+    )
     st.progress(max(0.0, current_p["hp"] / current_p["max_hp"]))
     st.text(f"HP: {current_p['hp']} / {current_p['max_hp']}")
 
@@ -371,7 +378,7 @@ with col_ctrl:
     with c2:
       if st.button("⬆️ 前進", use_container_width=True):
         current_p["y"] = max(260, current_p["y"] - 30)
-        process_turn("move", "前に踏み込み、弾を回避した！")
+        process_turn("move", "前に踏み込み、攻撃を回避した！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
         current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)
@@ -383,12 +390,14 @@ with col_ctrl:
 
     st.markdown("---")
 
-    if st.button("🔥 スキル攻撃", use_container_width=True):
+    if st.button(
+        f"🔥 {current_p['action_name']}を発動！", use_container_width=True
+    ):
       dmg = random.randint(25, 40)
       st.session_state.enemy_hp -= dmg
       process_turn(
           "attack",
-          f"エネルギー弾を発射し、敵に {dmg} のダメージを与えた！",
+          f"{current_p['action_name']}を放ち、敵に {dmg} のダメージを与えた！",
       )
 
   else:

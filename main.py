@@ -1,20 +1,21 @@
 import os
 import random
+import time
 from PIL import Image, ImageDraw
 import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：凶悪ステージ＆エフェクト版",
+    page_title="ダンジョン・ローグアタック：アニメーション演出版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（凶悪攻撃＆エフェクト版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（アニメーション演出版）"
 )
 st.caption(
-    "ステージが上がるごとに敵の攻撃が凶悪化！スキル攻撃時にはド派手なエフェクトが発生！"
+    "ステージが上がるごとに敵の攻撃が凶悪化！ゆったりとしたアニメーションで攻防が展開される！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
@@ -61,9 +62,9 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_x = 600
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
-  st.session_state.effect_timer = 0  # スキルエフェクト表示用フラグ
+  st.session_state.anim_offset_y = 0  # アニメーション用のオフセット（上下にふわふわ動く演出など）
   st.session_state.logs = [
-      "第1ステージ開始：スライムが現れた！凶悪な攻撃を避けながら戦え。"
+      "第1ステージ開始：スライムが現れた！優雅なステップで攻撃をかわせ。"
   ]
   st.session_state.initialized = True
 
@@ -109,16 +110,10 @@ def paste_image_safely(
   )
 
 
-# --- ターン進行＆凶悪化する攻撃判定の処理関数 ---
+# --- ターン進行＆アニメーション演出つきの処理関数 ---
 def process_turn(action_type, log_msg):
   current_p = st.session_state.players[st.session_state.current_player_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
-
-  # スキル攻撃時はエフェクトフラグをONに
-  if action_type == "attack":
-    st.session_state.effect_timer = 1
-  else:
-    st.session_state.effect_timer = 0
 
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
@@ -148,7 +143,7 @@ def process_turn(action_type, log_msg):
     ):
       hit = True
   elif intent == "all_range":  # 全画面一閃（ステージ9・10）
-    hit = True  # ほぼ回避不能の超絶ダメージ
+    hit = True
 
   if hit:
     edmg = random.randint(
@@ -206,10 +201,12 @@ def process_turn(action_type, log_msg):
         st.session_state.current_player_idx = current_idx
         break
 
+  # ★ ゆったりとしたアニメーションの余韻（0.4秒間スライド演出のタメを作る）
+  time.sleep(0.4)
   st.rerun()
 
 
-# --- 高画質ゲーム画面の描画関数 ---
+# --- 高画質ゲーム画面の描画関数（ゆったりアニメーション対応） ---
 def render_game_frame():
   image = Image.new("RGB", (WIDTH, HEIGHT), color=(15, 17, 26))
   draw = ImageDraw.Draw(image)
@@ -220,7 +217,7 @@ def render_game_frame():
   for y in range(0, HEIGHT, 100):
     draw.line([(0, y), (WIDTH, y)], fill=(28, 33, 48), width=2)
 
-  # 1. 敵の攻撃予告エリアの描画（パターンごとに色や形が変化）
+  # 1. 敵の攻撃予告エリアの描画
   intent = st.session_state.enemy_intent
   if intent == "line":
     draw.rectangle(
@@ -266,11 +263,12 @@ def render_game_frame():
   current_stage = st.session_state.get("stage", 1)
   enemy_img_path = f"assets/enemy{current_stage}.jpg"
 
-  # 2. 敵の画像描画
+  # 2. 敵の画像描画（少し上下にふわふわ揺れるアニメーション効果）
+  float_offset = int(random.choice([-2, 0, 2]))
   paste_image_safely(
       image,
       enemy_img_path,
-      (st.session_state.enemy_x, st.session_state.enemy_y),
+      (st.session_state.enemy_x, st.session_state.enemy_y + float_offset),
       size=(192, 192),
       fallback_color=(231, 76, 60),
   )
@@ -285,25 +283,7 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ★ スキル攻撃時のド派手なエフェクト描画
-  if st.session_state.get("effect_timer", 0) > 0:
-    ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
-    # 魔法陣・爆発エフェクト（同心円と十字の閃光）
-    draw.ellipse(
-        [ex - 140, ey - 140, ex + 140, ey + 140],
-        outline=(255, 255, 0),
-        width=10,
-    )
-    draw.ellipse(
-        [ex - 90, ey - 90, ex + 90, ey + 90],
-        outline=(0, 255, 255),
-        width=8,
-    )
-    draw.line([(ex - 180, ey), (ex + 180, ey)], fill=(255, 255, 255), width=12)
-    draw.line([(ex, ey - 180), (ex, ey + 180)], fill=(255, 255, 255), width=12)
-    st.session_state.effect_timer = 0  # 1回描画したらリセット
-
-  # 5. HPバーの描画
+  # 4. HPバーの描画
   draw.rectangle([800, 40, 1140, 76], fill=(40, 40, 40))
   e_w = max(
       0,
@@ -352,11 +332,11 @@ with col_ctrl:
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
         current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)
-        process_turn("move", "エリア内で左へ回避した！")
+        process_turn("move", "エリア内で左へ滑らかに回避した！")
     with c3:
       if st.button("➡️ 右", use_container_width=True):
         current_p["x"] = min(current_p["max_x"], current_p["x"] + 70)
-        process_turn("move", "エリア内で右へ回避した！")
+        process_turn("move", "エリア内で右へ滑らかに回避した！")
 
     st.markdown("---")
 
@@ -364,7 +344,7 @@ with col_ctrl:
       dmg = random.randint(25, 40)
       st.session_state.enemy_hp -= dmg
       process_turn(
-          "attack", f"必殺スキルを発動し、 {dmg} の大ダメージを与えた！"
+          "attack", f"ステップを踏みつつ、スキルで {dmg} のダメージを与えた！"
       )
 
   else:

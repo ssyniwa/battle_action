@@ -5,16 +5,16 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：弾道アニメーション版",
+    page_title="ダンジョン・ローグアタック：複数ステップアニメーション版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（弾道アニメーション版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（アニメーション版）"
 )
 st.caption(
-    "敵味方の攻撃が弾道エフェクトとして飛び交う！ステージが進むごとに凶悪さを増す強敵を打ち破れ！"
+    "行動するたびに弾道アニメーションのステップが進行！強敵の攻撃をかいくぐれ！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
@@ -61,13 +61,13 @@ if "initialized" not in st.session_state:
   st.session_state.enemy_x = 600
   st.session_state.enemy_y = 180
   st.session_state.enemy_intent = "line"
-  
-  # アニメーション用の軌跡エフェクト状態 ('none', 'enemy_attack', 'player_attack')
+
+  # ★ アニメーションの進行ステップ管理 (0:なし, 1〜3: 弾が移動する段階)
   st.session_state.anim_type = "none"
-  st.session_state.anim_progress = 0.0
+  st.session_state.anim_step = 0
 
   st.session_state.logs = [
-      "第1ステージ開始：スライムが現れた！弾道を見極めて回避し反撃せよ。"
+      "第1ステージ開始：スライムが現れた！アニメーション弾道を見極めて戦え。"
   ]
   st.session_state.initialized = True
 
@@ -113,17 +113,22 @@ def paste_image_safely(
   )
 
 
-# --- ターン進行＆凶悪化する攻撃判定の処理関数 ---
+# --- ターン進行＆複数ステップアニメーションの処理関数 ---
 def process_turn(action_type, log_msg):
   current_p = st.session_state.players[st.session_state.current_player_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
-  # アクションに応じたアニメーション軌跡の設定
+  # ★ アクションの種類に応じてアニメーションタイプを設定し、ステップを初期化(1から開始)
   if action_type == "attack":
     st.session_state.anim_type = "player_attack"
   else:
     st.session_state.anim_type = "enemy_attack"
-  st.session_state.anim_progress = 1.0  # 弾道を描画する進行度
+
+  # すでにアニメーションステップの途中の場合、ボタンを押すごとに進める (最大3ステップ)
+  if st.session_state.anim_step < 3:
+    st.session_state.anim_step += 1
+  else:
+    st.session_state.anim_step = 1  # ループまたはリセット
 
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
@@ -153,7 +158,7 @@ def process_turn(action_type, log_msg):
     ):
       hit = True
   elif intent == "all_range":  # 全画面一閃（ステージ9・10）
-    hit = True  # ほぼ回避不能の超絶ダメージ
+    hit = True
 
   if hit:
     edmg = random.randint(
@@ -162,7 +167,7 @@ def process_turn(action_type, log_msg):
     current_p["hp"] -= edmg
     st.session_state.logs.insert(
         0,
-        f"  ⚠️ {current_enemy_name}の凶悪な攻撃弾が {current_p['name']}"
+        f"  ⚠️ {current_enemy_name}の攻撃弾が {current_p['name']}"
         f" に直撃！ {edmg} の大ダメージ！",
     )
   else:
@@ -197,7 +202,7 @@ def process_turn(action_type, log_msg):
       st.session_state.logs.insert(
           0,
           f"🎉 ステージ {prev_stage} クリア！次に出現した強敵は"
-          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！さらに凶悪な攻撃弾に注意せよ！",
+          f"「{ENEMY_NAMES[st.session_state.stage]}」だ！",
       )
       st.session_state.enemy_max_hp = 70 + (st.session_state.stage * 35)
       st.session_state.enemy_hp = st.session_state.enemy_max_hp
@@ -225,7 +230,7 @@ def render_game_frame():
   for y in range(0, HEIGHT, 100):
     draw.line([(0, y), (WIDTH, y)], fill=(28, 33, 48), width=2)
 
-  # 1. 敵の攻撃予告エリアの描画（パターンごとに色や形が変化）
+  # 1. 敵の攻撃予告エリアの描画
   intent = st.session_state.enemy_intent
   if intent == "line":
     draw.rectangle(
@@ -290,32 +295,36 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. ★ 敵味方の攻撃を表すドット（弾道アニメーション）の描画
+  # 4. ★ 複数ステップで進む弾道アニメーションの描画
   anim_type = st.session_state.get("anim_type", "none")
-  if anim_type != "none":
+  anim_step = st.session_state.get("anim_step", 0)
+
+  if anim_type != "none" and anim_step > 0:
     current_p = st.session_state.players[st.session_state.current_player_idx]
     ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
     px, py = current_p["x"], current_p["y"]
 
-    if anim_type == "enemy_attack":
-      # 敵から味方へ向かう赤色の複数の攻撃弾
-      steps = 6
-      for i in range(1, steps + 1):
-        ratio = i / steps
-        bx = int(ex + (px - ex) * ratio)
-        by = int(ey + (py - ey) * ratio)
-        draw.ellipse([bx - 12, by - 12, bx + 12, by + 12], fill=(255, 50, 50))
-    elif anim_type == "player_attack":
-      # 味方から敵へ向かう青/黄色のエネルギー弾
-      steps = 6
-      for i in range(1, steps + 1):
-        ratio = i / steps
-        bx = int(px + (ex - px) * ratio)
-        by = int(py + (ey - py) * ratio)
-        draw.ellipse([bx - 14, by - 14, bx + 14, by + 14], fill=(50, 200, 255))
+    # ステップが進むごとに比率（0.33 -> 0.66 -> 1.0）が変わることで弾が移動する
+    progress_ratio = anim_step / 3.0
 
-    # 1回描画したらアニメーション状態を通常に戻す
-    st.session_state.anim_type = "none"
+    if anim_type == "enemy_attack":
+      bx = int(ex + (px - ex) * progress_ratio)
+      by = int(ey + (py - ey) * progress_ratio)
+      draw.ellipse([bx - 16, by - 16, bx + 16, by + 16], fill=(255, 50, 50))
+      draw.text(
+          (bx + 20, by - 10),
+          f"Step {anim_step}/3",
+          fill=(255, 255, 255),
+      )
+    elif anim_type == "player_attack":
+      bx = int(px + (ex - px) * progress_ratio)
+      by = int(py + (ey - py) * progress_ratio)
+      draw.ellipse([bx - 18, by - 18, bx + 18, by + 18], fill=(50, 200, 255))
+      draw.text(
+          (bx + 20, by - 10),
+          f"Step {anim_step}/3",
+          fill=(255, 255, 255),
+      )
 
   # 5. HPバーの描画
   draw.rectangle([800, 40, 1140, 76], fill=(40, 40, 40))
@@ -362,7 +371,7 @@ with col_ctrl:
     with c2:
       if st.button("⬆️ 前進", use_container_width=True):
         current_p["y"] = max(260, current_p["y"] - 30)
-        process_turn("move", "前に踏み込み、攻撃弾をやり過ごした！")
+        process_turn("move", "前に踏み込み、弾を回避した！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
         current_p["x"] = max(current_p["min_x"], current_p["x"] - 70)

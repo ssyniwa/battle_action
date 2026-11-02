@@ -381,4 +381,4 @@ st.markdown("---")
 st.subheader("📜 バトルログ")
 for log in st.session_state.logs[:4]:
   st.text(log)
-```[cite: 5]
+

@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（3方向壁の安全地帯・防衛基地搭載版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（3方向壁の安全基地・防衛システム搭載版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -113,10 +113,12 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦闘ガイド（3方向壁の安全地帯・防衛基地）】**
-* **安全な初期配置**: 味方キャラはバトル開始時、**左右と後ろの3方向を頑丈な壁に囲まれた安全地帯（バンカー）**の中に配置されます！
-* **操作方法**: 左右矢印キー（または A/Dキー）で移動し、前方へ出て攻撃 ｜ **Zキー**でキャラクター固有攻撃発射！
-* **追加の障害物**: フィールド中腹にも複数の掩蔽物（岩壁）が配置されており、敵の弾幕を完全にガードできます。
+**【戦闘ガイド（3方向安全基地システム搭載）】**
+* **操作方法**: 左右矢印キー（または A/Dキー）で自機移動 ｜ **Zキー**でキャラクター固有攻撃発射！
+* **安全基地（3方向の壁）**: 
+  * 味方の初期配置地点の**左右および前方（敵側）**に、頑丈な要塞の壁（3方向の障壁）が設置されています。
+  * スタート地点や基地内は**3方向が壁で守られた安全地帯**になっており、敵からの弾幕を完璧にガードできます！
+  * 攻撃する時は基地の隙間から顔を出して反撃しよう！
 * **キャラ別攻撃スタイル**: 
   * 🔴 **戦士アレル（レーザー光線）** ｜ 🔵 **魔術師ミリア（魔法弾）** ｜ 🟡 **聖騎士レオン（剣撃）**
 """)
@@ -165,30 +167,28 @@ else:
 
             let stage = STAGE_NUM;
             let player = { 
-                x: 550, y: 410, size: 60, speed: 7, 
+                x: 550, y: 410, size: 55, speed: 7, 
                 hp: PLAYER_HP, maxHp: PLAYER_MAXHP, 
                 name: "PLAYER_NAME", color: "PLAYER_COLOR", style: "PLAYER_STYLE" 
             };
             
             let enemy = { 
-                x: 550, y: 90, size: 90, 
+                x: 550, y: 80, size: 90, 
                 hp: 90 + (stage * 45), maxHp: 90 + (stage * 45),
                 name: "ENEMY_NAME",
                 moveTimer: 0
             };
             
-            // 3方向壁の安全地帯（バンカー基地）と中腹の障害物
-            // 基地構造：左壁、右壁、後ろ壁（下部）で構成し、前方が開いている
+            // プレイヤーの初期配置を守る「3方向の壁（左壁・右壁・前壁）」＋フィールド上の追加障害物
             let obstacles = [
-                // 3方向安全地帯の壁（下部中央：x=550付近を囲む）
-                { x: 470, y: 420, w: 20, h: 80, hp: 300, maxHp: 300, isBunker: true }, // 左壁
-                { x: 630, y: 420, w: 20, h: 80, hp: 300, maxHp: 300, isBunker: true }, // 右壁
-                { x: 550, y: 460, w: 180, h: 20, hp: 300, maxHp: 300, isBunker: true }, // 後ろ壁
+                // 3方向安全基地（アルコーブ／要塞バンカー）
+                { x: 450, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 左壁
+                { x: 650, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 右壁
+                { x: 550, y: 330, w: 120, h: 20, hp: 999, maxHp: 999, indestructible: true },// 前壁（敵側を防衛）
                 
-                // フィールド中腹の掩蔽物（岩壁）
-                { x: 300, y: 270, w: 100, h: 22, hp: 120, maxHp: 120, isBunker: false },
-                { x: 550, y: 270, w: 100, h: 22, hp: 120, maxHp: 120, isBunker: false },
-                { x: 800, y: 270, w: 100, h: 22, hp: 120, maxHp: 120, isBunker: false }
+                // フィールド上の通常障害物
+                { x: 280, y: 230, w: 90, h: 20, hp: 120, maxHp: 120 },
+                { x: 820, y: 230, w: 90, h: 20, hp: 120, maxHp: 120 }
             ];
             
             let bullets = [];
@@ -210,6 +210,7 @@ else:
                 keys[e.code] = false;
             });
 
+            // キャラクターごとの攻撃スタイル発射関数
             function shootPlayerAttack() {
                 if (player.style === "laser") {
                     playerBullets.push({
@@ -255,6 +256,7 @@ else:
                 }
             }
 
+            // ステージごとに強化・進化する敵の弾幕パターン
             function spawnEnemyBullets() {
                 let freq = Math.max(10, 42 - (stage * 3));
                 
@@ -315,26 +317,25 @@ else:
             function update() {
                 if (isGameOver || isCleared) return;
 
+                // プレイヤーの移動と障害物（壁）との衝突判定
                 let nextX = player.x;
                 let nextY = player.y;
-                
                 if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) {
                     nextX -= player.speed;
                 }
                 if ((keys["ArrowRight"] || keys["KeyD"]) && player.x < canvas.width - player.size / 2) {
                     nextX += player.speed;
                 }
-                if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > 150) {
+                if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > player.size / 2) {
                     nextY -= player.speed;
                 }
-                if ((keys["ArrowDown"] || keys["KeyS"]) && player.y < canvas.height - 40) {
+                if ((keys["ArrowDown"] || keys["KeyS"]) && player.y < canvas.height - player.size / 2) {
                     nextY += player.speed;
                 }
 
-                // 障害物・壁との衝突チェック（通り抜け防止）
+                // 障害物との当たり判定（壁抜け防止）
                 let canMoveX = true;
                 let canMoveY = true;
-                
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
                         let oLeft = obs.x - obs.w / 2;
@@ -342,21 +343,20 @@ else:
                         let oTop = obs.y - obs.h / 2;
                         let oBottom = obs.y + obs.h / 2;
                         
-                        // X軸方向の判定
+                        // X方向のチェック
                         if (player.y + player.size/2 > oTop && player.y - player.size/2 < oBottom) {
                             if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
                                 canMoveX = false;
                             }
                         }
-                        // Y軸方向の判定
-                        if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
+                        // Y方向のチェック
+                        if (player.x + player.size/2 > oLeft && player.x - player.size/2 < oRight) {
                             if (nextY + player.size/2 > oTop && nextY - player.size/2 < oBottom) {
                                 canMoveY = false;
                             }
                         }
                     }
                 }
-                
                 if (canMoveX) player.x = nextX;
                 if (canMoveY) player.y = nextY;
 
@@ -368,12 +368,13 @@ else:
 
                 spawnEnemyBullets();
 
-                // 敵の弾と障害物・プレイヤーの衝突判定
+                // 敵の弾の移動と、プレイヤー・障害物との当たり判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
 
+                    // 障害物との衝突判定
                     let hitObstacle = false;
                     for (let obs of obstacles) {
                         if (obs.hp > 0) {
@@ -384,7 +385,9 @@ else:
                             
                             if (b.x >= oLeft && b.x <= oRight && b.y >= oTop && b.y <= oBottom) {
                                 hitObstacle = true;
-                                obs.hp -= (obs.isBunker ? 1 : 3); // バンカー壁はより頑丈
+                                if (!obs.indestructible) {
+                                    obs.hp -= 3;
+                                }
                                 break;
                             }
                         }
@@ -395,6 +398,7 @@ else:
                         continue;
                     }
 
+                    // プレイヤーとの衝突判定
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
                         player.hp -= (8 + stage * 2);
@@ -410,7 +414,7 @@ else:
                     }
                 }
 
-                // 味方の攻撃弾と敵・障害物の衝突判定
+                // 味方の攻撃弾の移動と敵・障害物への当たり判定
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     pb.x += pb.vx;
@@ -418,7 +422,7 @@ else:
 
                     let hitObs = false;
                     for (let obs of obstacles) {
-                        if (obs.hp > 0 && !obs.isBunker) { // バンカー以外の岩壁は弾を遮る
+                        if (obs.hp > 0) {
                             let oLeft = obs.x - obs.w / 2;
                             let oRight = obs.x + obs.w / 2;
                             let oTop = obs.y - obs.h / 2;
@@ -469,12 +473,12 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                // 障害物・安全地帯（バンカー壁）の描画
+                // 障害物（3方向の安全壁含む）の描画
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
-                        if (obs.isBunker) {
-                            ctx.fillStyle = "#2b6cb0"; // バンカー壁は青みがかった要塞カラー
-                            ctx.strokeStyle = "#4299e1";
+                        if (obs.indestructible) {
+                            ctx.fillStyle = "#2b6cb0"; // 安全基地の青みがかった頑丈な壁
+                            ctx.strokeStyle = "#63b3ed";
                         } else {
                             ctx.fillStyle = "#4a5568";
                             ctx.strokeStyle = "#718096";
@@ -485,8 +489,7 @@ else:
                         ctx.fillRect(rx, ry, obs.w, obs.h);
                         ctx.strokeRect(rx, ry, obs.w, obs.h);
 
-                        // 耐久度バー（バンカー以外、またはHPが減った時）
-                        if (!obs.isBunker || obs.hp < obs.maxHp) {
+                        if (!obs.indestructible) {
                             ctx.fillStyle = "#222";
                             ctx.fillRect(rx, ry - 10, obs.w, 5);
                             ctx.fillStyle = "#38bdf8";

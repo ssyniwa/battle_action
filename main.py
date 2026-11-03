@@ -133,7 +133,7 @@ game_html = f"""
                 shootPlayerBullet();
                 e.preventDefault();
             }}
-        });
+        }});
         window.addEventListener("keyup", (e) => {{
             keys[e.code] = false;
         }});

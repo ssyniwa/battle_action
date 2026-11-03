@@ -11,7 +11,6 @@ st.set_page_config(
 st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（リアルタイムアクション版）")
 st.markdown("---")
 
-# Python側で管理するキャラクターとステージの状態をJavaScriptに渡すためにセッションステートを活用
 if "game_state" not in st.session_state:
     st.session_state.stage = 1
     st.session_state.players = [
@@ -21,7 +20,6 @@ if "game_state" not in st.session_state:
     ]
     st.session_state.active_player_idx = 0
 
-# ステージごとの敵の名前
 ENEMY_NAMES = {
     1: "ぷにぷにスライム",
     2: "牙をむくゴブリン",
@@ -37,11 +35,8 @@ ENEMY_NAMES = {
 
 current_stage = st.session_state.stage
 current_enemy_name = ENEMY_NAMES.get(current_stage, "強敵")
-
-# 現在操作中のプレイヤー情報
 active_p = st.session_state.players[st.session_state.active_player_idx]
 
-# サイドバーや上部でパーティの状態を表示
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown(f"### 📍 現在のステージ: **Stage {current_stage}/10**")
@@ -62,28 +57,28 @@ with col4:
 st.markdown("---")
 st.caption("【操作方法】 左右矢印キー（または A/Dキー）で移動 ｜ **Zキー**で攻撃弾を発射！ ｜ 敵も自機もダイナミックに動きます！")
 
-# HTML5 Canvas ＆ JavaScriptによるリアルタイムゲーム
-game_html = f"""
+# JavaScriptコードテンプレート（普通の文字列として定義し、プレースホルダーを置き換える）
+game_html_template = """
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <style>
-        body {{
+        body {
             background-color: #0f111a;
             color: white;
             text-align: center;
             font-family: sans-serif;
             margin: 0;
             padding: 0;
-        }}
-        canvas {{
+        }
+        canvas {
             background: #151824;
             border: 2px solid #28313c;
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
             display: block;
             margin: 0 auto;
-        }}
+        }
     </style>
 </head>
 <body>
@@ -92,64 +87,60 @@ game_html = f"""
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
-        // 画像の読み込み
         const playerImg = new Image();
-        playerImg.src = "{active_p['image']}";
+        playerImg.src = "PLAYER_IMAGE_PLACEHOLDER";
         let playerLoaded = false;
-        playerImg.onload = () => {{ playerLoaded = true; }};
+        playerImg.onload = () => { playerLoaded = true; };
 
         const enemyImg = new Image();
-        enemyImg.src = "app/static/enemy{current_stage}.jpg";
+        enemyImg.src = "app/static/enemySTAGE_PLACEHOLDER.jpg";
         let enemyLoaded = false;
-        enemyImg.onload = () => {{ enemyLoaded = true; }};
+        enemyImg.onload = () => { enemyLoaded = true; };
 
-        // ゲームステート
-        let stage = {current_stage};
-        let player = {{ 
+        let stage = STAGE_PLACEHOLDER;
+        let player = { 
             x: 550, y: 430, size: 65, speed: 7, 
-            hp: {active_p['hp']}, maxHp: {active_p['maxHp']}, 
-            name: "{active_p['name']}", color: "{active_p['color']}" 
-        }};
+            hp: PLAYER_HP_PLACEHOLDER, maxHp: PLAYER_MAXHP_PLACEHOLDER, 
+            name: "PLAYER_NAME_PLACEHOLDER", color: "PLAYER_COLOR_PLACEHOLDER" 
+        };
         
-        let enemy = {{ 
+        let enemy = { 
             x: 550, y: 110, size: 100, 
             hp: 60 + (stage * 30), maxHp: 60 + (stage * 30),
-            name: "{current_enemy_name}",
+            name: "ENEMY_NAME_PLACEHOLDER",
             moveTimer: 0
-        }};
+        };
         
-        let bullets = [];      // 敵からの弾幕
-        let playerBullets = []; // 味方からの攻撃弾
+        let bullets = [];
+        let playerBullets = [];
         
-        let keys = {{}};
+        let keys = {};
         let frameCount = 0;
         let isGameOver = false;
         let isCleared = false;
 
-        // キー入力リスナー (攻撃キーは Z)
-        window.addEventListener("keydown", (e) => {{
+        window.addEventListener("keydown", (e) => {
             keys[e.code] = true;
-            if ((e.code === "KeyZ" || e.code === "KeyY") && !isGameOver && !isCleared) {{
+            if ((e.code === "KeyZ" || e.code === "KeyY") && !isGameOver && !isCleared) {
                 shootPlayerBullet();
                 e.preventDefault();
-            }}
-        }});
-        window.addEventListener("keyup", (e) => {{
+            }
+        });
+        window.addEventListener("keyup", (e) => {
             keys[e.code] = false;
-        }});
+        });
 
         function shootPlayerBullet() {
-            playerBullets.push({{
+            playerBullets.push({
                 x: player.x,
                 y: player.y - 35,
                 vx: 0,
                 vy: -12,
                 size: 9
-            }});
+            });
         }
 
         function spawnEnemyBullets() {
-            // ステージが上がるごとに弾幕が激しくなる
             let freq = Math.max(15, 45 - (stage * 3));
             if (frameCount % freq === 0) {
                 let count = 4 + Math.floor(stage / 2);
@@ -170,7 +161,6 @@ game_html = f"""
         function update() {
             if (isGameOver || isCleared) return;
 
-            // 1. プレイヤーの移動（左右キー または A/D）
             if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) {
                 player.x -= player.speed;
             }
@@ -178,14 +168,11 @@ game_html = f"""
                 player.x += player.speed;
             }
 
-            // 2. 敵キャラクターのダイナミックな移動（左右にゆらゆら動く）
             enemy.moveTimer += 0.04 + (stage * 0.005);
             enemy.x = 550 + Math.sin(enemy.moveTimer) * (200 + stage * 15);
 
-            // 3. 弾幕生成
             spawnEnemyBullets();
 
-            // 4. 敵の弾の移動と当たり判定
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i];
                 b.x += b.vx;
@@ -206,7 +193,6 @@ game_html = f"""
                 }
             }
 
-            // 5. プレイヤーの攻撃弾の移動と敵への当たり判定
             for (let i = playerBullets.length - 1; i >= 0; i--) {
                 let pb = playerBullets[i];
                 pb.x += pb.vx;
@@ -234,7 +220,6 @@ game_html = f"""
             ctx.fillStyle = "#0f111a";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // グリッド線
             ctx.strokeStyle = "#1c2130";
             ctx.lineWidth = 1;
             for (let x = 0; x < canvas.width; x += 55) {
@@ -244,7 +229,6 @@ game_html = f"""
                 ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
             }
 
-            // 敵の描画（移動するアニメーション）
             if (enemyLoaded) {
                 ctx.drawImage(enemyImg, enemy.x - enemy.size/2, enemy.y - enemy.size/2, enemy.size, enemy.size);
             } else {
@@ -252,17 +236,15 @@ game_html = f"""
                 ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.size/2, 0, Math.PI*2); ctx.fill();
             }
 
-            // 敵名・HPバー
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 15px sans-serif";
-            ctx.fillText(`Stage {current_stage}: ${enemy.name}`, enemy.x, enemy.y - 70);
+            ctx.fillText(`Stage STAGE_PLACEHOLDER: ${enemy.name}`, enemy.x, enemy.y - 70);
 
             ctx.fillStyle = "#333";
             ctx.fillRect(enemy.x - 70, enemy.y - 55, 140, 12);
             ctx.fillStyle = "#e74c3c";
             ctx.fillRect(enemy.x - 70, enemy.y - 55, 140 * (Math.max(0, enemy.hp) / enemy.maxHp), 12);
 
-            // プレイヤー（自機）の描画
             if (playerLoaded) {
                 ctx.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
             } else {
@@ -270,7 +252,6 @@ game_html = f"""
                 ctx.beginPath(); ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2); ctx.fill();
             }
 
-            // プレイヤー名・HPバー
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 14px sans-serif";
             ctx.fillText(player.name, player.x, player.y + 52);
@@ -280,7 +261,6 @@ game_html = f"""
             ctx.fillStyle = "#2ecc71";
             ctx.fillRect(player.x - 45, player.y + 60, 90 * (Math.max(0, player.hp) / player.maxHp), 10);
 
-            // 敵からの弾 (赤)
             ctx.fillStyle = "#ff3355";
             for (let b of bullets) {
                 ctx.beginPath();
@@ -288,7 +268,6 @@ game_html = f"""
                 ctx.fill();
             }
 
-            // プレイヤーの攻撃弾 (青/シアン)
             ctx.fillStyle = "#33eeff";
             for (let pb of playerBullets) {
                 ctx.beginPath();
@@ -296,7 +275,6 @@ game_html = f"""
                 ctx.fill();
             }
 
-            // ゲームオーバー表示
             if (isGameOver) {
                 ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -306,9 +284,7 @@ game_html = f"""
                 ctx.font = "20px sans-serif";
                 ctx.fillStyle = "#fff";
                 ctx.fillText("下のボタンから次の仲間と交代してください", canvas.width / 2, canvas.height / 2 + 25);
-            } 
-            // ステージクリア表示
-            else if (isCleared) {
+            } else if (isCleared) {
                 ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = "#2ecc71";
@@ -332,9 +308,17 @@ game_html = f"""
 </html>
 """
 
+game_html = game_html_template\
+    .replace("PLAYER_IMAGE_PLACEHOLDER", active_p['image'])\
+    .replace("STAGE_PLACEHOLDER", str(current_stage))\
+    .replace("PLAYER_HP_PLACEHOLDER", str(active_p['hp']))\
+    .replace("PLAYER_MAXHP_PLACEHOLDER", str(active_p['maxHp']))\
+    .replace("PLAYER_NAME_PLACEHOLDER", active_p['name'])\
+    .replace("PLAYER_COLOR_PLACEHOLDER", active_p['color'])\
+    .replace("ENEMY_NAME_PLACEHOLDER", current_enemy_name)
+
 components.html(game_html, height=540)
 
-# 進行ボタン等のコントロールエリア
 col_l, col_r = st.columns(2)
 
 with col_l:
@@ -348,10 +332,8 @@ with col_l:
 
 with col_r:
     if st.button("👥 倒れたキャラを交代してリトライ / 次の仲間へ", use_container_width=True):
-        # 現在のキャラのHPを0（または敗北扱い）にして次の生存キャラを探す
         st.session_state.players[st.session_state.active_player_idx]["hp"] = 0
         
-        # 生存している次のキャラクターを探す
         next_idx = None
         for i, p in enumerate(st.session_state.players):
             if p["hp"] > 0:

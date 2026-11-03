@@ -39,7 +39,6 @@ ENEMY_NAMES = {
     10: "魔界の君主・魔王"
 }
 
-# ローカル画像ファイルをBase64データURIに変換するヘルパー関数
 def get_image_base64(path):
     if os.path.exists(path):
         with open(path, "rb") as f:
@@ -51,7 +50,6 @@ current_stage = st.session_state.stage
 current_enemy_name = ENEMY_NAMES.get(current_stage, "強敵")
 active_p = st.session_state.players[st.session_state.active_player_idx]
 
-# 画像パスの取得
 player_img_base64 = get_image_base64(active_p["file"])
 enemy_img_path = f"assets/enemy{current_stage}.jpg"
 enemy_img_base64 = get_image_base64(enemy_img_path)
@@ -100,7 +98,6 @@ with col5:
 
 st.markdown("---")
 
-# キャラクター手動切り替え選択肢
 st.markdown("#### 👥 出撃キャラクターの手動選択・交代")
 char_cols = st.columns(len(st.session_state.players))
 for i, p in enumerate(st.session_state.players):
@@ -118,7 +115,6 @@ st.caption("【操作方法】 左右矢印キー（または A/Dキー）で自
 if not st.session_state.game_started:
     st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！")
 else:
-    # --- HTML5 Canvas ＆ JavaScript によるリアルタイム・バトルゲーム ---
     game_html_template = """
     <!DOCTYPE html>
     <html>
@@ -148,7 +144,6 @@ else:
             const canvas = document.getElementById("gameCanvas");
             const ctx = canvas.getContext("2d");
 
-            // 画像の読み込み（Base64）
             const playerImg = new Image();
             playerImg.src = "PLAYER_IMG_B64";
             let playerLoaded = false;
@@ -230,7 +225,7 @@ else:
                     player.x += player.speed;
                 }
 
-                # 敵キャラのダイナミックな移動アニメーション
+                // 敵キャラのダイナミックな移動アニメーション
                 enemy.moveTimer += 0.05 + (stage * 0.006);
                 enemy.x = 550 + Math.sin(enemy.moveTimer) * (220 + stage * 12);
 
@@ -292,7 +287,7 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                # 敵画像の描画（動くアニメーション）
+                // 敵画像の描画（動くアニメーション）
                 if (enemyLoaded) {
                     ctx.drawImage(enemyImg, enemy.x - enemy.size/2, enemy.y - enemy.size/2, enemy.size, enemy.size);
                 } else {
@@ -309,7 +304,7 @@ else:
                 ctx.fillStyle = "#e74c3c";
                 ctx.fillRect(enemy.x - 65, enemy.y - 48, 130 * (Math.max(0, enemy.hp) / enemy.maxHp), 10);
 
-                # 自機画像の描画（動くアニメーション）
+                // 自機画像の描画（動くアニメーション）
                 if (playerLoaded) {
                     ctx.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
                 } else {
@@ -373,11 +368,18 @@ else:
     </html>
     """
 
-    game_html = game_html_template        .replace("PLAYER_IMG_B64", player_img_base64)        .replace("ENEMY_IMG_B64", enemy_img_base64)        .replace("STAGE_NUM", str(current_stage))        .replace("PLAYER_HP", str(active_p['hp']))        .replace("PLAYER_MAXHP", str(active_p['maxHp']))        .replace("PLAYER_NAME", active_p['name'])        .replace("PLAYER_COLOR", active_p['color'])        .replace("ENEMY_NAME", current_enemy_name)
+    game_html = game_html_template\
+        .replace("PLAYER_IMG_B64", player_img_base64)\
+        .replace("ENEMY_IMG_B64", enemy_img_base64)\
+        .replace("STAGE_NUM", str(current_stage))\
+        .replace("PLAYER_HP", str(active_p['hp']))\
+        .replace("PLAYER_MAXHP", str(active_p['maxHp']))\
+        .replace("PLAYER_NAME", active_p['name'])\
+        .replace("PLAYER_COLOR", active_p['color'])\
+        .replace("ENEMY_NAME", current_enemy_name)
 
     components.html(game_html, height=500)
 
-# --- ステージクリア / キャラクター交代ボタンの制御セクション ---
 st.markdown("---")
 ctrl_col1, ctrl_col2 = st.columns(2)
 
@@ -394,6 +396,7 @@ with ctrl_col1:
 with ctrl_col2:
     if st.button("👥 倒れたキャラを控えにして次の仲間と交代", use_container_width=True):
         st.session_state.players[st.session_state.active_player_idx]["hp"] = 0
+        st.session_state.game_stage = False
         st.session_state.game_started = False
         
         next_idx = None

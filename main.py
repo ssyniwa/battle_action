@@ -11,6 +11,7 @@ st.set_page_config(
 st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（リアルタイムアクション版）")
 st.markdown("---")
 
+# ゲーム状態の初期化
 if "game_state" not in st.session_state:
     st.session_state.stage = 1
     st.session_state.players = [
@@ -20,6 +21,7 @@ if "game_state" not in st.session_state:
     ]
     st.session_state.active_player_idx = 0
 
+# ステージごとの敵の名前
 ENEMY_NAMES = {
     1: "ぷにぷにスライム",
     2: "牙をむくゴブリン",
@@ -37,6 +39,7 @@ current_stage = st.session_state.stage
 current_enemy_name = ENEMY_NAMES.get(current_stage, "強敵")
 active_p = st.session_state.players[st.session_state.active_player_idx]
 
+# ステータス表示カラム
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown(f"### 📍 現在のステージ: **Stage {current_stage}/10**")
@@ -57,7 +60,7 @@ with col4:
 st.markdown("---")
 st.caption("【操作方法】 左右矢印キー（または A/Dキー）で移動 ｜ **Zキー**で攻撃弾を発射！ ｜ 敵も自機もダイナミックに動きます！")
 
-# JavaScriptコードテンプレート（普通の文字列として定義し、プレースホルダーを置き換える）
+# HTML5 Canvas ＆ JavaScriptによるリアルタイムゲーム
 game_html_template = """
 <!DOCTYPE html>
 <html>

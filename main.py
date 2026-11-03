@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（強化弾幕＆キャラ別固有攻撃版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（障害物・掩蔽物防衛システム搭載版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -113,13 +113,14 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦闘ガイド】**
+**【戦闘ガイド（障害物防御システム追加）】**
 * **操作方法**: 左右矢印キー（または A/Dキー）で自機移動 ｜ **Zキー**でキャラクター固有攻撃発射！
-* **キャラ別攻撃スタイル**:
-  * 🔴 **戦士アレル**: 直線を貫く高速の **「レーザー光線」**
-  * 🔵 **魔術師ミリア**: 追尾または広範囲に広がる **「魔法弾」**
-  * 🟡 **聖騎士レオン**: 敵を切り裂くワイドな衝撃波の **「剣撃」**
-* **ステージ強化**: ステージが進むにつれて、敵のHP増加だけでなく、**弾数増加・全方位放射弾・スパイラル弾・レーザー弾幕**へと敵の攻撃が激化します！
+* **要塞・障害物（岩壁）**: 
+  * フィールド上に複数の**頑丈な障害物（岩壁）**が設置されています。
+  * 敵の激しい弾幕は障害物に当たると消滅するため、**障害物の後ろに隠れて身を守る（防御する）**ことができます！
+  * ただし、障害物自体にも耐久値（HP）があり、敵や味方の攻撃を受け続けると崩壊することがあります。
+* **キャラ別攻撃スタイル**: 
+  * 🔴 **戦士アレル（レーザー光線）** ｜ 🔵 **魔術師ミリア（魔法弾）** ｜ 🟡 **聖騎士レオン（剣撃）**
 """)
 
 if not st.session_state.game_started:
@@ -178,6 +179,13 @@ else:
                 moveTimer: 0
             };
             
+            // 複数の障害物（掩蔽物・岩壁）の設置 [x, y, width, height, hp]
+            let obstacles = [
+                { x: 250, y: 260, w: 90, h: 22, hp: 100, maxHp: 100 },
+                { x: 550, y: 260, w: 90, h: 22, hp: 100, maxHp: 100 },
+                { x: 850, y: 260, w: 90, h: 22, hp: 100, maxHp: 100 }
+            ];
+            
             let bullets = [];
             let playerBullets = [];
             
@@ -200,7 +208,6 @@ else:
             // キャラクターごとの攻撃スタイル発射関数
             function shootPlayerAttack() {
                 if (player.style === "laser") {
-                    // 戦士アレル：高速レーザー光線（細長く鋭い光線）
                     playerBullets.push({
                         x: player.x,
                         y: player.y - 30,
@@ -212,7 +219,6 @@ else:
                         damage: 22
                     });
                 } else if (player.style === "orb") {
-                    // 魔術師ミリア：魔法弾（左右に少し広がる2発の魔弾）
                     playerBullets.push({
                         x: player.x - 12,
                         y: player.y - 25,
@@ -232,7 +238,6 @@ else:
                         damage: 14
                     });
                 } else if (player.style === "slash") {
-                    // 聖騎士レオン：剣撃（ワイドな三日月状の衝撃波）
                     playerBullets.push({
                         x: player.x,
                         y: player.y - 30,
@@ -252,7 +257,6 @@ else:
                 
                 if (frameCount % freq === 0) {
                     if (stage <= 2) {
-                        // ステージ1〜2：シンプルな直線・小規模な弾
                         let count = 3 + stage;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / (count + 1)) * (i + 1);
@@ -264,7 +268,6 @@ else:
                             });
                         }
                     } else if (stage <= 5) {
-                        // ステージ3〜5：扇状弾幕 ＋ スパイラル弾
                         let count = 6 + stage;
                         let offset = (frameCount * 0.1) % Math.PI;
                         for (let i = 0; i < count; i++) {
@@ -278,7 +281,6 @@ else:
                             });
                         }
                     } else if (stage <= 8) {
-                        // ステージ6〜8：全方位放射弾幕 ＋ 高速ニードル弾
                         let count = 10 + stage;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI * 2 / count) * i;
@@ -291,7 +293,6 @@ else:
                             });
                         }
                     } else {
-                        // ステージ9〜10（魔王など）：超高密度クロス弾幕 ＆ 追尾型ダークエネルギー弾
                         let count = 16;
                         let wave = Math.sin(frameCount * 0.1) * 2.0;
                         for (let i = 0; i < count; i++) {
@@ -311,14 +312,37 @@ else:
             function update() {
                 if (isGameOver || isCleared) return;
 
+                // プレイヤーの移動（障害物との衝突判定：障害物を壁として通り抜け不可にする）
+                let nextX = player.x;
                 if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) {
-                    player.x -= player.speed;
+                    nextX -= player.speed;
                 }
                 if ((keys["ArrowRight"] || keys["KeyD"]) && player.x < canvas.width - player.size / 2) {
-                    player.x += player.speed;
+                    nextX += player.speed;
                 }
 
-                // 敵の移動（ステージが進むほど素早くトリッキーに動く）
+                // 障害物との水平方向の衝突チェック
+                let canMove = true;
+                for (let obs of obstacles) {
+                    if (obs.hp > 0) {
+                        let oLeft = obs.x - obs.w / 2;
+                        let oRight = obs.x + obs.w / 2;
+                        let oTop = obs.y - obs.h / 2;
+                        let oBottom = obs.y + obs.h / 2;
+                        
+                        // プレイヤーが障害物のY範囲にいる時、X方向のめり込みを防ぐ
+                        if (player.y + player.size/2 > oTop && player.y - player.size/2 < oBottom) {
+                            if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
+                                canMove = false;
+                            }
+                        }
+                    }
+                }
+                if (canMove) {
+                    player.x = nextX;
+                }
+
+                // 敵の移動
                 let moveSpeedFactor = 0.05 + (stage * 0.008);
                 let moveWidthFactor = 200 + (stage * 15);
                 enemy.moveTimer += moveSpeedFactor;
@@ -326,12 +350,35 @@ else:
 
                 spawnEnemyBullets();
 
-                // 敵の弾の移動と当たり判定
+                // 敵の弾の移動と、プレイヤー・障害物との当たり判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
 
+                    // 障害物との衝突判定（弾が障害物に当たると消滅し、障害物がダメージを受ける）
+                    let hitObstacle = false;
+                    for (let obs of obstacles) {
+                        if (obs.hp > 0) {
+                            let oLeft = obs.x - obs.w / 2;
+                            let oRight = obs.x + obs.w / 2;
+                            let oTop = obs.y - obs.h / 2;
+                            let oBottom = obs.y + obs.h / 2;
+                            
+                            if (b.x >= oLeft && b.x <= oRight && b.y >= oTop && b.y <= oBottom) {
+                                hitObstacle = true;
+                                obs.hp -= 3; // 弾が当たると削れる
+                                break;
+                            }
+                        }
+                    }
+
+                    if (hitObstacle) {
+                        bullets.splice(i, 1);
+                        continue;
+                    }
+
+                    // プレイヤーとの衝突判定
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
                         player.hp -= (8 + stage * 2);
@@ -347,13 +394,32 @@ else:
                     }
                 }
 
-                // 味方の攻撃弾の移動と敵への当たり判定
+                // 味方の攻撃弾の移動と敵・障害物への当たり判定
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     pb.x += pb.vx;
                     pb.y += pb.vy;
 
-                    // 当たり判定 (レーザー、魔法弾、剣撃のサイズ別)
+                    // 障害物との衝突判定（味方の攻撃も障害物に阻まれる、または通過できる仕様にすることも可能。ここでは障害物を防壁として機能させる）
+                    let hitObs = false;
+                    for (let obs of obstacles) {
+                        if (obs.hp > 0) {
+                            let oLeft = obs.x - obs.w / 2;
+                            let oRight = obs.x + obs.w / 2;
+                            let oTop = obs.y - obs.h / 2;
+                            let oBottom = obs.y + obs.h / 2;
+                            
+                            if (pb.x >= oLeft && pb.x <= oRight && pb.y >= oTop && pb.y <= oBottom) {
+                                hitObs = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hitObs) {
+                        playerBullets.splice(i, 1);
+                        continue;
+                    }
+
                     let hitRadius = pb.type === "slash" ? 25 : (pb.type === "laser" ? 12 : 10);
                     let dist = Math.hypot(pb.x - enemy.x, pb.y - enemy.y);
                     
@@ -386,6 +452,29 @@ else:
                 }
                 for (let y = 0; y < canvas.height; y += 50) {
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                }
+
+                // 障害物（岩壁・掩蔽物）の描画
+                for (let obs of obstacles) {
+                    if (obs.hp > 0) {
+                        ctx.fillStyle = "#4a5568";
+                        ctx.strokeStyle = "#718096";
+                        ctx.lineWidth = 2;
+                        let rx = obs.x - obs.w / 2;
+                        let ry = obs.y - obs.h / 2;
+                        ctx.fillRect(rx, ry, obs.w, obs.h);
+                        ctx.strokeRect(rx, ry, obs.w, obs.h);
+
+                        // 岩壁のひび割れやテクスチャ風の装飾
+                        ctx.fillStyle = "#2d3748";
+                        ctx.fillRect(rx + 10, ry + 6, obs.w - 20, 4);
+
+                        // 耐久度バー
+                        ctx.fillStyle = "#222";
+                        ctx.fillRect(rx, ry - 10, obs.w, 5);
+                        ctx.fillStyle = "#38bdf8";
+                        ctx.fillRect(rx, ry - 10, obs.w * (obs.hp / obs.maxHp), 5);
+                    }
                 }
 
                 // 敵画像
@@ -424,7 +513,7 @@ else:
                 ctx.fillStyle = "#2ecc71";
                 ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / player.maxHp), 9);
 
-                // 敵の弾の描画（形状や色が変わる）
+                // 敵の弾の描画
                 for (let b of bullets) {
                     ctx.fillStyle = b.color;
                     ctx.beginPath();
@@ -441,14 +530,12 @@ else:
                 // キャラクター固有の攻撃エフェクト描画
                 for (let pb of playerBullets) {
                     if (pb.type === "laser") {
-                        // 戦士アレル：レーザー光線（縦長の光るビーム）
                         ctx.fillStyle = "#ff2222";
                         ctx.shadowBlur = 15;
                         ctx.shadowColor = "#ff0000";
                         ctx.fillRect(pb.x - pb.width/2, pb.y - pb.height/2, pb.width, pb.height);
                         ctx.shadowBlur = 0;
                     } else if (pb.type === "orb") {
-                        // 魔術師ミリア：青く光る魔法弾
                         ctx.fillStyle = "#00ccff";
                         ctx.shadowBlur = 12;
                         ctx.shadowColor = "#00ffff";
@@ -457,7 +544,6 @@ else:
                         ctx.fill();
                         ctx.shadowBlur = 0;
                     } else if (pb.type === "slash") {
-                        // 聖騎士レオン：黄金の三日月剣撃
                         ctx.fillStyle = "#ffdd00";
                         ctx.shadowBlur = 18;
                         ctx.shadowColor = "#ffff00";
@@ -522,7 +608,7 @@ with ctrl_col1:
         if current_stage < 10:
             st.session_state.stage += 1
             st.session_state.game_started = False
-            st.success(f"ステージ {st.session_state.stage} に進みます！「戦闘開始」を押してください。")
+            st.success(f"Stage {st.session_state.stage} に進みます！「戦闘開始」を押してください。")
             st.rerun()
         else:
             st.success("🎉 全10ステージ完全踏破！魔王を討伐しました！")

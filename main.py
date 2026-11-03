@@ -5,22 +5,22 @@ import streamlit as st
 
 # ページの設定（ワイド画面）
 st.set_page_config(
-    page_title="ダンジョン・ローグアタック：戦略スキル版",
+    page_title="ダンジョン・ローグアタック：弾幕軌跡エフェクト版",
     page_icon="⚔️",
     layout="wide",
 )
 
 st.title(
-    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（戦略スキル版）"
+    "⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（弾幕軌跡エフェクト版）"
 )
 st.caption(
-    "魔術師は遠距離から、戦士と騎士は近距離で戦闘！騎士は移動力抜群！回復や防御スキルを駆使せよ！"
+    "放射状の弾幕ラインやキャラクター別の軌跡エフェクトが敵味方の間を駆け巡る！"
 )
 
 # --- ゲーム状態（セッションステート）の初期化 ---
 if "initialized" not in st.session_state:
   st.session_state.stage = 1
-  # プレイヤー3体のパーティ定義（配置・移動範囲・スキルを最適化）
+  # プレイヤー3体のパーティ定義
   st.session_state.players = [
       {
           "name": "戦士アレル",
@@ -30,25 +30,25 @@ if "initialized" not in st.session_state:
           "y": 500,
           "min_x": 200,
           "max_x": 600,
-          "move_step": 70,  # 通常の移動量
+          "move_step": 70,
           "image": "assets/player1.jpg",
           "color": (255, 60, 60),  # 赤
           "action_name": "猛撃の剣気",
-          "sub_skill": "ガードスタンス",  # 防御スキル
+          "sub_skill": "ガードスタンス",
       },
       {
           "name": "魔術師ミリア",
           "hp": 70,
           "max_hp": 70,
           "x": 600,
-          "y": 600,  # 敵から一番遠い後方に配置
+          "y": 600,
           "min_x": 300,
           "max_x": 900,
           "move_step": 70,
           "image": "assets/player2.jpg",
           "color": (60, 150, 255),  # 青
           "action_name": "魔力ブラスト",
-          "sub_skill": "ヒール魔法",  # 回復スキル
+          "sub_skill": "ヒール魔法",
       },
       {
           "name": "聖騎士レオン",
@@ -58,14 +58,14 @@ if "initialized" not in st.session_state:
           "y": 480,
           "min_x": 150,
           "max_x": 1050,
-          "move_step": 120,  # ★ 騎士は移動距離を多めに設定！
+          "move_step": 120,
           "image": "assets/player3.jpg",
           "color": (255, 220, 50),  # 黄
           "action_name": "ホーリーライト",
-          "sub_skill": "聖域の守護",  # 全体防御・軽減スキル
+          "sub_skill": "聖域の守護",
       },
   ]
-  st.session_state.current_player_idx = 0  # 現在行動するプレイヤーのインデックス
+  st.session_state.current_player_idx = 0
 
   # ステージに応じた敵の初期化
   st.session_state.enemy_hp = 70 + (st.session_state.stage * 25)
@@ -76,12 +76,11 @@ if "initialized" not in st.session_state:
 
   # アニメーション用の状態管理
   st.session_state.anim_type = "none"
-  st.session_state.anim_step = 0
   st.session_state.anim_color = (255, 255, 255)
   st.session_state.anim_player_idx = 0
 
   st.session_state.logs = [
-      "第1ステージ開始：魔術師は後方から、戦士と騎士は前線で敵に立ち向かえ！"
+      "第1ステージ開始：放射状の弾幕や軌跡を見極めて戦え！"
   ]
   st.session_state.initialized = True
 
@@ -133,27 +132,22 @@ def process_turn(action_type, log_msg):
   current_p = st.session_state.players[acting_idx]
   current_enemy_name = ENEMY_NAMES.get(st.session_state.stage, "敵")
 
-  # アクションに応じたアニメーション設定
+  # アクションに応じた軌跡アニメーションタイプの設定
   if action_type == "attack":
     st.session_state.anim_type = "player_attack"
     st.session_state.anim_color = current_p["color"]
     st.session_state.anim_player_idx = acting_idx
   elif action_type == "heal":
     st.session_state.anim_type = "player_heal"
-    st.session_state.anim_color = (50, 255, 100)  # 緑色の回復エフェクト
+    st.session_state.anim_color = (50, 255, 100)
     st.session_state.anim_player_idx = acting_idx
   elif action_type == "buff":
     st.session_state.anim_type = "player_buff"
-    st.session_state.anim_color = (255, 255, 100)  # 黄色の防御エフェクト
+    st.session_state.anim_color = (255, 255, 100)
     st.session_state.anim_player_idx = acting_idx
   else:
     st.session_state.anim_type = "enemy_attack"
     st.session_state.anim_color = (255, 50, 50)
-
-  if st.session_state.anim_step < 3:
-    st.session_state.anim_step += 1
-  else:
-    st.session_state.anim_step = 1
 
   if log_msg:
     st.session_state.logs.insert(0, f"【{current_p['name']}】 {log_msg}")
@@ -189,7 +183,6 @@ def process_turn(action_type, log_msg):
     edmg = random.randint(
         12 + (st.session_state.stage * 3), 22 + (st.session_state.stage * 4)
     )
-    # 防御スキル発動中の場合は被ダメージを軽減
     if action_type == "buff":
       edmg = int(edmg * 0.4)
       st.session_state.logs.insert(
@@ -327,50 +320,63 @@ def render_game_frame():
           image, p["image"], (p["x"], p["y"]), size=size, fallback_color=colors[idx]
       )
 
-  # 4. アニメーション弾道・スキルの描画
+  # 4. ★ 【新手法】複数パターンの軌跡ライン（放射状・弾幕エフェクト）の描画
   anim_type = st.session_state.get("anim_type", "none")
-  anim_step = st.session_state.get("anim_step", 0)
   anim_color = st.session_state.get("anim_color", (255, 255, 255))
   anim_p_idx = st.session_state.get("anim_player_idx", 0)
 
-  if anim_type != "none" and anim_step > 0:
+  if anim_type != "none":
     acting_p = st.session_state.players[anim_p_idx]
     ex, ey = st.session_state.enemy_x, st.session_state.enemy_y
     px, py = acting_p["x"], acting_p["y"]
 
-    progress_ratio = anim_step / 3.0
-
     if anim_type == "enemy_attack":
-      bx = int(ex + (px - ex) * progress_ratio)
-      by = int(ey + (py - ey) * progress_ratio)
-      draw.ellipse([bx - 16, by - 16, bx + 16, by + 16], fill=(255, 50, 50))
+      # 敵から全方位（放射状）に広がる赤い弾幕ラインを描画
+      for offset_x in [-150, -75, 0, 75, 150]:
+        draw.line(
+            [(ex, ey + 40), (px + offset_x, py - 40)],
+            fill=(255, 50, 50),
+            width=5,
+        )
+      # 弾道の中心に強力なコア弾を描画
+      draw.ellipse([px - 25, py - 25, px + 25, py + 25], fill=(255, 100, 100))
+
     elif anim_type == "player_attack":
-      bx = int(px + (ex - px) * progress_ratio)
-      by = int(py + (ey - py) * progress_ratio)
-      draw.ellipse([bx - 20, by - 20, bx + 20, by + 20], fill=anim_color)
+      # 味方から敵へ向かう幾何学的な集中線・複数の斬撃/魔力軌跡ライン
+      for offset_x in [-60, -30, 0, 30, 60]:
+        draw.line(
+            [(px + offset_x, py - 40), (ex, ey + 40)],
+            fill=anim_color,
+            width=6,
+        )
+      # 敵への直撃地点に派手なヒットエフェクト円を描画
+      draw.ellipse([ex - 50, ey - 50, ex + 50, ey + 50], outline=anim_color, width=8)
       draw.text(
-          (bx + 25, by - 10),
-          f"{acting_p['action_name']}",
+          (ex + 60, ey - 10),
+          f"⚡ {acting_p['action_name']}!!",
           fill=anim_color,
       )
+
     elif anim_type == "player_heal":
-      # 回復の緑エフェクト
       draw.ellipse(
-          [px - 50, py - 50, px + 50, py + 50], outline=(50, 255, 100), width=6
+          [px - 60, py - 60, px + 60, py + 60], outline=(50, 255, 100), width=6
       )
       draw.text(
-          (px - 30, py - 70), "✨ HP RECOVER", fill=(50, 255, 100)
+          (px - 40, py - 80), "✨ HP RECOVER", fill=(50, 255, 100)
       )
+
     elif anim_type == "player_buff":
-      # 防御の黄エフェクト
       draw.rectangle(
-          [px - 60, py - 60, px + 60, py + 60],
+          [px - 70, py - 70, px + 70, py + 70],
           outline=(255, 255, 100),
           width=6,
       )
       draw.text(
-          (px - 30, py - 70), "🛡️ GUARD UP", fill=(255, 255, 100)
+          (px - 40, py - 80), "🛡️ GUARD UP", fill=(255, 255, 100)
       )
+
+    # 1回描画したらアニメーション状態をリセット
+    st.session_state.anim_type = "none"
 
   # 5. HPバーの描画
   draw.rectangle([800, 40, 1140, 76], fill=(40, 40, 40))
@@ -406,7 +412,7 @@ with col_ctrl:
 
   if not is_cleared and not is_game_over:
     current_p = st.session_state.players[st.session_state.current_player_idx]
-    step = current_p["move_step"]  # キャラごとの移動距離（騎士は大きい）
+    step = current_p["move_step"]
 
     st.markdown(
         f"### 👥 手番: <span style='color:rgb{current_p['color']}'>"
@@ -422,20 +428,19 @@ with col_ctrl:
     with c2:
       if st.button("⬆️ 前進", use_container_width=True):
         current_p["y"] = max(260, current_p["y"] - 30)
-        process_turn("move", "前に踏み込み、攻撃を回避した！")
+        process_turn("move", "前に踏み込み、弾幕を回避した！")
     with c1:
       if st.button("⬅️ 左", use_container_width=True):
         current_p["x"] = max(current_p["min_x"], current_p["x"] - step)
-        process_turn("move", f"エリア内で左へ大きく回避した！")
+        process_turn("move", "エリア内で左へ大きく回避した！")
     with c3:
       if st.button("➡️ 右", use_container_width=True):
         current_p["x"] = min(current_p["max_x"], current_p["x"] + step)
-        process_turn("move", f"エリア内で右へ大きく回避した！")
+        process_turn("move", "エリア内で右へ大きく回避した！")
 
     st.markdown("---")
     st.text("【スキル選択】")
 
-    # 1. 攻撃スキルボタン
     if st.button(
         f"🔥 {current_p['action_name']} (攻撃)", use_container_width=True
     ):
@@ -443,14 +448,13 @@ with col_ctrl:
       st.session_state.enemy_hp -= dmg
       process_turn(
           "attack",
-          f"{current_p['action_name']}を放ち、敵に {dmg} のダメージを与えた！",
+          f"{current_p['action_name']}の放射軌跡を放ち、敵に {dmg}"
+          " のダメージを与えた！",
       )
 
-    # 2. 回復または防御スキルボタン（キャラごとに分岐）
     if current_p["name"] == "魔術師ミリア":
       if st.button("💚 ヒール魔法 (味方回復)", use_container_width=True):
         heal_val = random.randint(25, 40)
-        # 最もHPが減っている味方を回復
         target = min(
             st.session_state.players,
             key=lambda p: p["hp"] / max(1, p["max_hp"]),
@@ -467,7 +471,6 @@ with col_ctrl:
         )
     elif current_p["name"] == "聖騎士レオン":
       if st.button("✨ 聖域の守護 (全体守備)", use_container_width=True):
-        # 騎士は自分とパーティのHPを少し回復しつつ防御
         current_p["hp"] = min(
             current_p["max_hp"], current_p["hp"] + 20
         )

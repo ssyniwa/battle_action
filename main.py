@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（障害物・掩蔽物防衛システム搭載版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（3方向壁の安全地帯・防衛基地搭載版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -113,12 +113,10 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦闘ガイド（障害物防御システム追加）】**
-* **操作方法**: 左右矢印キー（または A/Dキー）で自機移動 ｜ **Zキー**でキャラクター固有攻撃発射！
-* **要塞・障害物（岩壁）**: 
-  * フィールド上に複数の**頑丈な障害物（岩壁）**が設置されています。
-  * 敵の激しい弾幕は障害物に当たると消滅するため、**障害物の後ろに隠れて身を守る（防御する）**ことができます！
-  * ただし、障害物自体にも耐久値（HP）があり、敵や味方の攻撃を受け続けると崩壊することがあります。
+**【戦闘ガイド（3方向壁の安全地帯・防衛基地）】**
+* **安全な初期配置**: 味方キャラはバトル開始時、**左右と後ろの3方向を頑丈な壁に囲まれた安全地帯（バンカー）**の中に配置されます！
+* **操作方法**: 左右矢印キー（または A/Dキー）で移動し、前方へ出て攻撃 ｜ **Zキー**でキャラクター固有攻撃発射！
+* **追加の障害物**: フィールド中腹にも複数の掩蔽物（岩壁）が配置されており、敵の弾幕を完全にガードできます。
 * **キャラ別攻撃スタイル**: 
   * 🔴 **戦士アレル（レーザー光線）** ｜ 🔵 **魔術師ミリア（魔法弾）** ｜ 🟡 **聖騎士レオン（剣撃）**
 """)
@@ -167,7 +165,7 @@ else:
 
             let stage = STAGE_NUM;
             let player = { 
-                x: 550, y: 390, size: 60, speed: 7, 
+                x: 550, y: 410, size: 60, speed: 7, 
                 hp: PLAYER_HP, maxHp: PLAYER_MAXHP, 
                 name: "PLAYER_NAME", color: "PLAYER_COLOR", style: "PLAYER_STYLE" 
             };
@@ -179,11 +177,18 @@ else:
                 moveTimer: 0
             };
             
-            // 複数の障害物（掩蔽物・岩壁）の設置 [x, y, width, height, hp]
+            // 3方向壁の安全地帯（バンカー基地）と中腹の障害物
+            // 基地構造：左壁、右壁、後ろ壁（下部）で構成し、前方が開いている
             let obstacles = [
-                { x: 250, y: 260, w: 90, h: 22, hp: 100, maxHp: 100 },
-                { x: 550, y: 260, w: 90, h: 22, hp: 100, maxHp: 100 },
-                { x: 850, y: 260, w: 90, h: 22, hp: 100, maxHp: 100 }
+                // 3方向安全地帯の壁（下部中央：x=550付近を囲む）
+                { x: 470, y: 420, w: 20, h: 80, hp: 300, maxHp: 300, isBunker: true }, // 左壁
+                { x: 630, y: 420, w: 20, h: 80, hp: 300, maxHp: 300, isBunker: true }, // 右壁
+                { x: 550, y: 460, w: 180, h: 20, hp: 300, maxHp: 300, isBunker: true }, // 後ろ壁
+                
+                // フィールド中腹の掩蔽物（岩壁）
+                { x: 300, y: 270, w: 100, h: 22, hp: 120, maxHp: 120, isBunker: false },
+                { x: 550, y: 270, w: 100, h: 22, hp: 120, maxHp: 120, isBunker: false },
+                { x: 800, y: 270, w: 100, h: 22, hp: 120, maxHp: 120, isBunker: false }
             ];
             
             let bullets = [];
@@ -205,7 +210,6 @@ else:
                 keys[e.code] = false;
             });
 
-            // キャラクターごとの攻撃スタイル発射関数
             function shootPlayerAttack() {
                 if (player.style === "laser") {
                     playerBullets.push({
@@ -251,7 +255,6 @@ else:
                 }
             }
 
-            // ステージごとに強化・進化する敵の弾幕パターン
             function spawnEnemyBullets() {
                 let freq = Math.max(10, 42 - (stage * 3));
                 
@@ -312,17 +315,26 @@ else:
             function update() {
                 if (isGameOver || isCleared) return;
 
-                // プレイヤーの移動（障害物との衝突判定：障害物を壁として通り抜け不可にする）
                 let nextX = player.x;
+                let nextY = player.y;
+                
                 if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) {
                     nextX -= player.speed;
                 }
                 if ((keys["ArrowRight"] || keys["KeyD"]) && player.x < canvas.width - player.size / 2) {
                     nextX += player.speed;
                 }
+                if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > 150) {
+                    nextY -= player.speed;
+                }
+                if ((keys["ArrowDown"] || keys["KeyS"]) && player.y < canvas.height - 40) {
+                    nextY += player.speed;
+                }
 
-                // 障害物との水平方向の衝突チェック
-                let canMove = true;
+                // 障害物・壁との衝突チェック（通り抜け防止）
+                let canMoveX = true;
+                let canMoveY = true;
+                
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
                         let oLeft = obs.x - obs.w / 2;
@@ -330,17 +342,23 @@ else:
                         let oTop = obs.y - obs.h / 2;
                         let oBottom = obs.y + obs.h / 2;
                         
-                        // プレイヤーが障害物のY範囲にいる時、X方向のめり込みを防ぐ
+                        // X軸方向の判定
                         if (player.y + player.size/2 > oTop && player.y - player.size/2 < oBottom) {
                             if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
-                                canMove = false;
+                                canMoveX = false;
+                            }
+                        }
+                        // Y軸方向の判定
+                        if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
+                            if (nextY + player.size/2 > oTop && nextY - player.size/2 < oBottom) {
+                                canMoveY = false;
                             }
                         }
                     }
                 }
-                if (canMove) {
-                    player.x = nextX;
-                }
+                
+                if (canMoveX) player.x = nextX;
+                if (canMoveY) player.y = nextY;
 
                 // 敵の移動
                 let moveSpeedFactor = 0.05 + (stage * 0.008);
@@ -350,13 +368,12 @@ else:
 
                 spawnEnemyBullets();
 
-                // 敵の弾の移動と、プレイヤー・障害物との当たり判定
+                // 敵の弾と障害物・プレイヤーの衝突判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
 
-                    // 障害物との衝突判定（弾が障害物に当たると消滅し、障害物がダメージを受ける）
                     let hitObstacle = false;
                     for (let obs of obstacles) {
                         if (obs.hp > 0) {
@@ -367,7 +384,7 @@ else:
                             
                             if (b.x >= oLeft && b.x <= oRight && b.y >= oTop && b.y <= oBottom) {
                                 hitObstacle = true;
-                                obs.hp -= 3; // 弾が当たると削れる
+                                obs.hp -= (obs.isBunker ? 1 : 3); // バンカー壁はより頑丈
                                 break;
                             }
                         }
@@ -378,7 +395,6 @@ else:
                         continue;
                     }
 
-                    // プレイヤーとの衝突判定
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
                         player.hp -= (8 + stage * 2);
@@ -394,16 +410,15 @@ else:
                     }
                 }
 
-                // 味方の攻撃弾の移動と敵・障害物への当たり判定
+                // 味方の攻撃弾と敵・障害物の衝突判定
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     pb.x += pb.vx;
                     pb.y += pb.vy;
 
-                    // 障害物との衝突判定（味方の攻撃も障害物に阻まれる、または通過できる仕様にすることも可能。ここでは障害物を防壁として機能させる）
                     let hitObs = false;
                     for (let obs of obstacles) {
-                        if (obs.hp > 0) {
+                        if (obs.hp > 0 && !obs.isBunker) { // バンカー以外の岩壁は弾を遮る
                             let oLeft = obs.x - obs.w / 2;
                             let oRight = obs.x + obs.w / 2;
                             let oTop = obs.y - obs.h / 2;
@@ -454,26 +469,29 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                // 障害物（岩壁・掩蔽物）の描画
+                // 障害物・安全地帯（バンカー壁）の描画
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
-                        ctx.fillStyle = "#4a5568";
-                        ctx.strokeStyle = "#718096";
+                        if (obs.isBunker) {
+                            ctx.fillStyle = "#2b6cb0"; // バンカー壁は青みがかった要塞カラー
+                            ctx.strokeStyle = "#4299e1";
+                        } else {
+                            ctx.fillStyle = "#4a5568";
+                            ctx.strokeStyle = "#718096";
+                        }
                         ctx.lineWidth = 2;
                         let rx = obs.x - obs.w / 2;
                         let ry = obs.y - obs.h / 2;
                         ctx.fillRect(rx, ry, obs.w, obs.h);
                         ctx.strokeRect(rx, ry, obs.w, obs.h);
 
-                        // 岩壁のひび割れやテクスチャ風の装飾
-                        ctx.fillStyle = "#2d3748";
-                        ctx.fillRect(rx + 10, ry + 6, obs.w - 20, 4);
-
-                        // 耐久度バー
-                        ctx.fillStyle = "#222";
-                        ctx.fillRect(rx, ry - 10, obs.w, 5);
-                        ctx.fillStyle = "#38bdf8";
-                        ctx.fillRect(rx, ry - 10, obs.w * (obs.hp / obs.maxHp), 5);
+                        // 耐久度バー（バンカー以外、またはHPが減った時）
+                        if (!obs.isBunker || obs.hp < obs.maxHp) {
+                            ctx.fillStyle = "#222";
+                            ctx.fillRect(rx, ry - 10, obs.w, 5);
+                            ctx.fillStyle = "#38bdf8";
+                            ctx.fillRect(rx, ry - 10, obs.w * (obs.hp / obs.maxHp), 5);
+                        }
                     }
                 }
 
@@ -587,16 +605,7 @@ else:
     </html>
     """
 
-    game_html = game_html_template\
-        .replace("PLAYER_IMG_B64", player_img_base64)\
-        .replace("ENEMY_IMG_B64", enemy_img_base64)\
-        .replace("STAGE_NUM", str(current_stage))\
-        .replace("PLAYER_HP", str(active_p['hp']))\
-        .replace("PLAYER_MAXHP", str(active_p['maxHp']))\
-        .replace("PLAYER_NAME", active_p['name'])\
-        .replace("PLAYER_COLOR", active_p['color'])\
-        .replace("PLAYER_STYLE", active_p['style'])\
-        .replace("ENEMY_NAME", current_enemy_name)
+    game_html = game_html_template        .replace("PLAYER_IMG_B64", player_img_base64)        .replace("ENEMY_IMG_B64", enemy_img_base64)        .replace("STAGE_NUM", str(current_stage))        .replace("PLAYER_HP", str(active_p['hp']))        .replace("PLAYER_MAXHP", str(active_p['maxHp']))        .replace("PLAYER_NAME", active_p['name'])        .replace("PLAYER_COLOR", active_p['color'])        .replace("PLAYER_STYLE", active_p['style'])        .replace("ENEMY_NAME", current_enemy_name)
 
     components.html(game_html, height=500)
 

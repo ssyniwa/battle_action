@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（タクティカル戦術AI改修版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（超知能・高機動回避AI改修版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -116,11 +116,10 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦術AIガイダンス】**
-* **明確な3段階のAI戦略**: 
-  1. 🛡️ **基地いぶり出し（回り込み）**: 味方が前壁の陰にこもると、敵は射角を通すため**基地の左右外側へ大きく回り込んで防壁を無効化**します。
-  2. 🎯 **直接ロックオン（牽制）**: 味方が基地から出ると、敵は正面に立ち塞がり逃げ場を無くすように位置取ります。
-  3. ⚡ **緊急スライド回避**: 味方の直線攻撃（レーザー等）を察知すると、即座に横へステップ回避します。
+**【新・超知能AI戦術ガイド】**
+* 🧠 **予測射撃＆サイドストレイフ（陣形維持）**: 敵は単に正面に立つだけでなく、プレイヤーの移動先を予測して挟み撃ちするポジションを取ります。
+* ⚡ **高精度ディフレクション回避（スマートダッシュ）**: プレイヤーの弾が迫ると、敵は予測軌道を計算して**一瞬でサイドへ高速ステップ回避**します！
+* 🦅 **ダイブアタック（急襲プレッシャー）**: 安全基地にこもるプレイヤーに対し、上空から一気に距離を詰めてプレッシャーをかけます。
 """)
 
 if not st.session_state.game_started:
@@ -181,7 +180,7 @@ else:
                 targetY: 80,
                 baseY: 80,
                 aiState: "WAIT",
-                flankSide: 1 // 1: 右側回り込み, -1: 左側回り込み
+                dodgeCooldown: 0
             };
             
             let obstacles = [
@@ -266,96 +265,84 @@ else:
                 }
             }
 
-            // 完全改修された高精度戦略AI移動エンジン
-            function updateTacticalAI() {
+            // 完全刷新された超知能・高機動回避AIエンジン
+            function updateAdvancedTacticalAI() {
                 if (!enemyActive) return;
 
-                // プレイヤーが安全基地の壁の陰にいるか判定 (前壁X:480〜620, Y:330より下)
-                let isInsideBunker = (player.x >= 470 && player.x <= 630 && player.y >= 330);
-
-                if (isInsideBunker) {
-                    // 戦略状態1：回り込み（FLANK）
-                    // 前壁が射線を防ぐため、敵は意識的に左右の外側（X: 320 または 780）に急移動し、斜めから基地内を狙撃
-                    enemy.aiState = "FLANK (回り込み)";
-                    
-                    // 一定周期で左右の回り込み位置を戦略的に切り替え
-                    if (frameCount % 120 === 0) {
-                        enemy.flankSide = (Math.random() < 0.5) ? 1 : -1;
-                    }
-
-                    if (enemy.flankSide === 1) {
-                        enemy.targetX = 780; // 右側の斜め射角
-                    } else {
-                        enemy.targetX = 320; // 左側の斜め射角
-                    }
-                    enemy.targetY = enemy.baseY + Math.sin(frameCount * 0.08) * 15;
-
-                } else {
-                    // 戦略状態2：直接追撃＆押さえ込み（PRESSURE）
-                    // プレイヤーが基地から出たため、正面に回って退路を断つ
-                    enemy.aiState = "PRESSURE (直接追撃)";
-                    enemy.targetX = player.x;
-                    enemy.targetY = enemy.baseY + Math.cos(frameCount * 0.05) * 20;
+                if (enemy.dodgeCooldown > 0) {
+                    enemy.dodgeCooldown--;
                 }
 
-                // 戦略状態3：弾丸回避（DODGE）
-                // 直進してくる味方の攻撃弾を検知した場合、緊急回避アクションを発動
+                enemy.aiState = "STRAFE (予測射撃)";
+                
+                // 1. 高精度弾丸回避（SMART_DODGE）
+                // プレイヤーの弾が敵に向かって直撃コースにある場合、高確率で横へ高速ステップダッシュ
                 for (let pb of playerBullets) {
-                    let dx = Math.abs(pb.x - enemy.x);
-                    let dy = enemy.y - pb.y;
-                    if (dx < 50 && pb.y > enemy.y && pb.y < enemy.y + 220) {
-                        enemy.aiState = "DODGE (ステップ回避)";
-                        let dodgeSide = (pb.x > enemy.x) ? -1 : 1;
-                        enemy.targetX = enemy.x + dodgeSide * 90;
+                    let distX = Math.abs(pb.x - enemy.x);
+                    let distY = enemy.y - pb.y;
+                    // 弾が下から迫っており、敵に命中する軌道線上にあるか
+                    if (distX < 65 && distY > 0 && distY < 250 && enemy.dodgeCooldown === 0) {
+                        enemy.aiState = "DODGE (回避ステップ)";
+                        let escapeDir = (pb.x > enemy.x) ? -1 : 1;
+                        enemy.targetX = enemy.x + escapeDir * 140; // 大きくサイドへスライド
+                        enemy.dodgeCooldown = 25; // 連続回避を防ぐクールダウン
                         break;
                     }
                 }
 
-                // ステージボスごとの特殊戦術（高難度ステージでの近接強襲）
-                if (stage >= 7 && frameCount % 240 > 180) {
-                    enemy.aiState = "AMBUSH (急襲)";
-                    enemy.targetY = 180; // 前傾姿勢で距離を詰める
+                // 2. プレイヤーの位置に応じた戦術移動（通常時はプレイヤーを翻弄するジグザグストレイフ）
+                if (enemy.dodgeCooldown === 0) {
+                    let timeFactor = frameCount * 0.05;
+                    // プレイヤーの左右どちらかの死角や、前壁の隙間を狙うアグレッシブなポジショニング
+                    let offsetTargetX = player.x + Math.sin(timeFactor) * 220;
+                    
+                    // もしプレイヤーが安全基地（中央付近）に隠れているなら、左右の壁際に回り込んで十字砲火を狙う
+                    let isInsideBunker = (player.x >= 450 && player.x <= 650 && player.y >= 330);
+                    if (isInsideBunker) {
+                        enemy.aiState = "FLANK (基地狙撃)";
+                        offsetTargetX = (Math.floor(frameCount / 90) % 2 === 0) ? 300 : 800;
+                    }
+
+                    // 一定確率で上空からプレッシャーをかけるダイブアタック
+                    if (stage >= 5 && frameCount % 300 > 240) {
+                        enemy.aiState = "DIVE (急襲)";
+                        enemy.targetY = 200;
+                    } else {
+                        enemy.targetY = enemy.baseY + Math.cos(timeFactor * 1.5) * 20;
+                    }
+
+                    enemy.targetX = offsetTargetX;
                 }
 
-                // 領域制限
+                // マップ端制限
                 enemy.targetX = Math.max(100, Math.min(canvas.width - 100, enemy.targetX));
 
-                // アジリティ（素早さ）：ステージごとに俊敏に反応
-                let agility = 0.04 + (stage * 0.009);
-                enemy.x += (enemy.targetX - enemy.x) * agility;
-                enemy.y += (enemy.targetY - enemy.y) * agility;
+                // 高機動レスポンス（機敏な追従速度）
+                let responseSpeed = 0.08 + (stage * 0.012);
+                enemy.x += (enemy.targetX - enemy.x) * responseSpeed;
+                enemy.y += (enemy.targetY - enemy.y) * responseSpeed;
 
-                // 戦略的弾幕発射
-                let freq = Math.max(8, 38 - (stage * 3));
+                // 多彩な弾幕発射
+                let freq = Math.max(8, 35 - (stage * 3));
                 if (frameCount % freq === 0) {
-                    if (isInsideBunker) {
-                        // 基地に引きこもるプレイヤーに対し、斜め狙撃弾を射出
-                        let angleToPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                    if (stage <= 2) {
                         for (let i = -1; i <= 1; i++) {
-                            let a = angleToPlayer + i * 0.12;
-                            bullets.push({
-                                x: enemy.x, y: enemy.y + 40,
-                                vx: Math.cos(a) * 4.0, vy: Math.sin(a) * 4.0,
-                                size: 8, color: "#ff3366"
-                            });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 2.0, vy: 3.5, size: 8, color: "#4ade80" });
                         }
-                    } else if (stage <= 3) {
-                        for (let i = -1; i <= 1; i++) {
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 1.5, vy: 3.2, size: 8, color: "#4ade80" });
-                        }
-                    } else if (stage <= 6) {
-                        let count = 8;
-                        let offset = frameCount * 0.12;
+                    } else if (stage <= 5) {
+                        let count = 7;
+                        let offset = frameCount * 0.15;
                         for (let i = 0; i < count; i++) {
-                            let angle = (Math.PI * 2 / count) * i + offset;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.4, vy: Math.sin(angle) * 3.4, size: 8, color: "#a855f7" });
+                            let angle = (Math.PI / (count - 1)) * i + offset * 0.2;
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.8, vy: Math.sin(angle) * 3.8 + 1.2, size: 8, color: "#a855f7" });
                         }
                     } else {
-                        let count = 14;
-                        let wave = Math.sin(frameCount * 0.1) * 2.5;
+                        // 高難度：全方位ニードル＆ホーミング弾幕
+                        let count = 16;
+                        let wave = Math.sin(frameCount * 0.12) * 3.0;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / count) * i + wave;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.2, vy: Math.sin(angle) * 4.2 + 1.5, size: 10, color: "#e879f9" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.5, vy: Math.sin(angle) * 4.5 + 1.5, size: 9, color: "#f43f5e" });
                         }
                     }
                 }
@@ -390,9 +377,9 @@ else:
                 if (canMoveX) player.x = nextX;
                 if (canMoveY) player.y = nextY;
 
-                updateTacticalAI();
+                updateAdvancedTacticalAI();
 
-                // 敵の弾の移動と判定
+                // 敵弾判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
@@ -430,7 +417,7 @@ else:
                     }
                 }
 
-                // プレイヤー攻撃弾の移動と判定
+                // プレイヤー攻撃弾判定
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     pb.x += pb.vx;
@@ -486,7 +473,7 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                // 障害物描画
+                // 障害物
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
                         if (obs.indestructible) {
@@ -511,7 +498,7 @@ else:
                     }
                 }
 
-                // 敵画像
+                // 敵
                 if (enemyLoaded) {
                     ctx.drawImage(enemyImg, enemy.x - enemy.size/2, enemy.y - enemy.size/2, enemy.size, enemy.size);
                 } else {
@@ -521,7 +508,7 @@ else:
 
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 14px sans-serif";
-                ctx.fillText(`Stage ${stage}: ${enemy.name} [${enemy.aiState || 'WAIT'}]`, enemy.x, enemy.y - 58);
+                ctx.fillText(`Stage ${stage}: ${enemy.name} [AI: ${enemy.aiState || 'WAIT'}]`, enemy.x, enemy.y - 58);
 
                 ctx.fillStyle = "#333";
                 ctx.fillRect(enemy.x - 70, enemy.y - 48, 140, 10);
@@ -534,7 +521,7 @@ else:
                     ctx.fillText("READY... (移動キーまたはZキーで戦闘開始)", canvas.width / 2, enemy.y + 80);
                 }
 
-                // 自機画像
+                // プレイヤー
                 if (playerLoaded) {
                     ctx.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
                 } else {
@@ -551,7 +538,7 @@ else:
                 ctx.fillStyle = "#2ecc71";
                 ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / player.maxHp), 9);
 
-                // 弾描画
+                // 弾
                 for (let b of bullets) {
                     ctx.fillStyle = b.color;
                     ctx.beginPath();
@@ -626,7 +613,7 @@ with ctrl_col1:
 with ctrl_col2:
     if st.button("👥 倒れたキャラを控えにして次の仲間と交代", use_container_width=True):
         st.session_state.players[st.session_state.active_player_idx]["hp"] = 0
-        st.session_state.game_started = False
+        st.session_state.game_started, _ = False, None
         
         next_idx = None
         for i, p in enumerate(st.session_state.players):

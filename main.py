@@ -29,6 +29,8 @@ if "attack_level" not in st.session_state:
     st.session_state.attack_level = 1
 if "enemy_hp" not in st.session_state:
     st.session_state.enemy_hp = None
+if "must_swap" not in st.session_state:
+    st.session_state.must_swap = False
 
 ENEMY_NAMES = {
     1: "ぷにぷにスライム",
@@ -65,6 +67,10 @@ enemy_img_base64 = get_image_base64(enemy_img_path)
 
 all_dead = all(p["hp"] <= 0 for p in st.session_state.players)
 
+# もし出撃中キャラのHPが0以下になっていたら強制的にmust_swapをTrueにする
+if active_p["hp"] <= 0 and not all_dead:
+    st.session_state.must_swap = True
+
 # --- UI コントロール・ステータス表示 ---
 col1, col2, col3, col4, col5 = st.columns([2, 2, 3, 2, 2])
 
@@ -93,13 +99,15 @@ with col4:
     st.markdown("### 🎮 バトル制御")
     if all_dead:
         st.error("💀 全員死亡（GAME OVER）")
+    elif st.session_state.must_swap:
+        st.warning("⚠️ キャラが倒れました！下の「交代ボタン」を先に押してください")
     elif not st.session_state.game_started:
         if st.button("🔥 戦闘開始", use_container_width=True, type="primary"):
             if active_p["hp"] > 0:
                 st.session_state.game_started = True
                 st.rerun()
             else:
-                st.error("現在のキャラは死亡しています！生存している他のキャラを選択してください。")
+                st.error("現在のキャラは死亡しています！")
     else:
         if st.button("⏸️ 中断 / 一時停止", use_container_width=True):
             st.session_state.game_started = False
@@ -115,12 +123,16 @@ with col5:
 st.markdown("---")
 
 st.markdown("#### 👥 出撃キャラクターの手動選択・交代")
+if st.session_state.must_swap:
+    st.error("🚨 味方キャラクターが戦闘不能になりました。個別のキャラクター選択ボタンはロックされています。必ず下の **「倒れたキャラを『死亡』扱いにして次の仲間と交代」** ボタンを押してください！")
+
 char_cols = st.columns(len(st.session_state.players))
 for i, p in enumerate(st.session_state.players):
     with char_cols[i]:
         style_name = {"laser": "レーザー", "orb": "魔法弾", "slash": "剣撃"}[p['style']]
         btn_label = f"選ぶ: {p['name']} [{style_name}] ({p['hp']}HP)" if p["hp"] > 0 else f"💀 {p['name']} (死亡)"
-        disabled = (p["hp"] <= 0)
+        # must_swapがTrueのときは、個別選択ボタンをすべて無効化して強制的に交代ボタンを踏ませる
+        disabled = (p["hp"] <= 0) or st.session_state.must_swap
         if st.button(btn_label, disabled=disabled, use_container_width=True):
             st.session_state.active_player_idx = i
             st.session_state.game_started = False
@@ -131,7 +143,10 @@ st.markdown("---")
 if all_dead:
     st.error("💀 参戦可能なパーティメンバーが全員死亡しました。GAME OVERです！「ゲームリセット」ボタンで最初からやり直してください。")
 elif not st.session_state.game_started:
-    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（味方・敵の弾が障害物の壁で反射する反射弾幕ステージです！）")
+    if st.session_state.must_swap:
+        st.warning("⚠️ 出撃中のキャラが倒れたため、交代処理を行ってください。")
+    else:
+        st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（味方・敵の弾が障害物の壁で反射する反射弾幕ステージです！）")
 else:
     game_html_template = """
     <!DOCTYPE html>
@@ -196,22 +211,14 @@ else:
                 clones: []
             };
             
-            // 障害物を大幅に増加・配置（中央要塞 ＋ 左右対称の多重バリケード構造）
             let obstacles = [
-                // 中央要塞ウォール
                 { x: 470, y: 370, w: 20, h: 100, hp: 999, maxHp: 999, indestructible: true },
                 { x: 630, y: 370, w: 20, h: 100, hp: 999, maxHp: 999, indestructible: true },
                 { x: 550, y: 310, w: 160, h: 20, hp: 999, maxHp: 999, indestructible: true },
-                
-                // ミドル・バリケード（左右）
                 { x: 300, y: 280, w: 90, h: 20, hp: 150, maxHp: 150 },
                 { x: 800, y: 280, w: 90, h: 20, hp: 150, maxHp: 150 },
-                
-                // フロント・サイドピラー
                 { x: 160, y: 380, w: 25, h: 80, hp: 999, maxHp: 999, indestructible: true },
                 { x: 940, y: 380, w: 25, h: 80, hp: 999, maxHp: 999, indestructible: true },
-                
-                // アッパー・ディフェンス壁
                 { x: 350, y: 160, w: 20, h: 70, hp: 120, maxHp: 120 },
                 { x: 750, y: 160, w: 20, h: 70, hp: 120, maxHp: 120 },
                 { x: 550, y: 170, w: 100, h: 18, hp: 999, maxHp: 999, indestructible: true }
@@ -254,8 +261,7 @@ else:
                             x: player.x + offsetX, y: player.y - 30,
                             vx: 0, vy: -18,
                             width: 6 + Math.floor(attackLevel), height: 30,
-                            type: "laser", damage: 22 + dmgBonus,
-                            bounces: 0
+                            type: "laser", damage: 22 + dmgBonus, bounces: 0
                         });
                     }
                 } else if (player.style === "orb") {
@@ -265,8 +271,7 @@ else:
                         playerBullets.push({
                             x: player.x + (i - 1) * 10, y: player.y - 25,
                             vx: angleOffset * 5, vy: -12,
-                            size: 8, type: "orb", damage: 14 + dmgBonus,
-                            bounces: 0
+                            size: 8, type: "orb", damage: 14 + dmgBonus, bounces: 0
                         });
                     }
                 } else if (player.style === "slash") {
@@ -276,8 +281,7 @@ else:
                             x: player.x + offsetX, y: player.y - 30,
                             vx: 0, vy: -10,
                             width: 36, height: 14,
-                            type: "slash", damage: 28 + dmgBonus,
-                            bounces: 0
+                            type: "slash", damage: 28 + dmgBonus, bounces: 0
                         });
                     }
                 }
@@ -287,13 +291,11 @@ else:
                     playerBullets.push({
                         x: player.x, y: player.y - 30,
                         vx: (Math.random() - 0.5) * 4, vy: -8,
-                        size: 9, type: "homing", speed: 7.5, damage: 18 + dmgBonus,
-                        bounces: 0
+                        size: 9, type: "homing", speed: 7.5, damage: 18 + dmgBonus, bounces: 0
                     });
                 }
             }
 
-            // 弾と障害物の反射判定処理
             function checkBulletObstacleReflection(bullet, isPlayerBullet) {
                 for (let obs of obstacles) {
                     if (obs.hp <= 0) continue;
@@ -307,9 +309,7 @@ else:
                     let by = bullet.y;
                     let bRadius = isPlayerBullet ? (bullet.type === "slash" ? 18 : 8) : bullet.size;
 
-                    // 当たり判定 (AABB)
                     if (bx + bRadius > oLeft && bx - bRadius < oRight && by + bRadius > oTop && by - bRadius < oBottom) {
-                        // どちらの壁面からヒットしたかを判定して反射
                         let prevX = bx - bullet.vx;
                         let prevY = by - bullet.vy;
 
@@ -325,16 +325,13 @@ else:
                             if (prevY <= oTop) bullet.y = oTop - bRadius - 1;
                             else bullet.y = oBottom + bRadius + 1;
                         } else {
-                            // コーナーや不明な場合は両方反転
                             bullet.vx *= -1;
                             bullet.vy *= -1;
                         }
 
-                        // 破壊可能な障害物であればダメージを与える
                         if (!obs.indestructible) {
                             obs.hp -= isPlayerBullet ? bullet.damage * 0.3 : 5;
                         }
-
                         return true;
                     }
                 }
@@ -375,10 +372,8 @@ else:
                 if (enemy.specialTimer % 240 === 0) {
                     specialEffects.push({
                         x: 550, y: 240,
-                        radius: 130,
-                        duration: 150,
-                        type: "gravity",
-                        color: "rgba(147, 51, 234, 0.35)"
+                        radius: 130, duration: 150,
+                        type: "gravity", color: "rgba(147, 51, 234, 0.35)"
                     });
                 }
 
@@ -541,7 +536,6 @@ else:
 
                 updateAdvancedTacticalAI();
 
-                // 特殊エフェクト
                 for (let i = specialEffects.length - 1; i >= 0; i--) {
                     let eff = specialEffects[i];
                     eff.duration--;
@@ -575,7 +569,6 @@ else:
                     }
                 }
 
-                // 敵弾判定 ＆ 障害物反射
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
@@ -589,7 +582,6 @@ else:
                         if (spd > 5.2) { b.vx = (b.vx/spd)*5.2; b.vy = (b.vy/spd)*5.2; }
                     }
 
-                    // 障害物反射チェック
                     checkBulletObstacleReflection(b, false);
 
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
@@ -608,7 +600,6 @@ else:
                     }
                 }
 
-                // プレイヤー攻撃弾判定 ＆ 障害物反射
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     
@@ -626,7 +617,6 @@ else:
                     pb.x += pb.vx;
                     pb.y += pb.vy;
 
-                    // 障害物反射チェック
                     checkBulletObstacleReflection(pb, true);
 
                     let hitRadius = pb.type === "slash" ? 25 : (pb.type === "laser" ? 12 : 10);
@@ -666,7 +656,6 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                // 特殊エフェクト
                 for (let eff of specialEffects) {
                     ctx.fillStyle = eff.color;
                     ctx.beginPath();
@@ -683,7 +672,6 @@ else:
                     ctx.fill();
                 }
 
-                // 障害物
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
                         if (obs.indestructible) {
@@ -708,13 +696,11 @@ else:
                     }
                 }
 
-                // 幻影分身描画
                 for (let clone of enemy.clones) {
                     ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
                     ctx.beginPath(); ctx.arc(clone.x, clone.y, clone.size/2, 0, Math.PI*2); ctx.fill();
                 }
 
-                // 敵
                 if (enemy.isEnraged) {
                     ctx.shadowBlur = 25;
                     ctx.shadowColor = "#ff2222";
@@ -751,7 +737,6 @@ else:
                     ctx.fillText("READY... (移動キーまたはZキーで戦闘開始)", canvas.width / 2, enemy.y + 80);
                 }
 
-                // プレイヤー
                 if (playerLoaded) {
                     ctx.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
                 } else {
@@ -768,7 +753,6 @@ else:
                 ctx.fillStyle = "#2ecc71";
                 ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / player.maxHp), 9);
 
-                // 弾
                 for (let b of bullets) {
                     ctx.fillStyle = b.color;
                     ctx.beginPath();
@@ -785,7 +769,7 @@ else:
                         ctx.beginPath(); ctx.arc(pb.x, pb.y, pb.size, 0, Math.PI * 2); ctx.fill();
                     } else if (pb.type === "slash") {
                         ctx.fillStyle = "#ffdd00";
-                        ctx.beginPath(); ctx.ellipse(pb.x, pb.y, pb.width/2, pb.height/2, 0, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.ellipse(pb.x, pb, pb.width/2, pb.height/2, 0, 0, Math.PI * 2); ctx.fill();
                     } else if (pb.type === "homing") {
                         ctx.fillStyle = "#22d3ee";
                         ctx.beginPath(); ctx.arc(pb.x, pb.y, pb.size, 0, Math.PI * 2); ctx.fill();
@@ -803,7 +787,7 @@ else:
                     ctx.fillText(`${player.name} が死亡しました！`, canvas.width / 2, canvas.height / 2 - 20);
                     ctx.font = "18px sans-serif";
                     ctx.fillStyle = "#fff";
-                    ctx.fillText("上の「中断」ボタンを押して仲間と交代してください", canvas.width / 2, canvas.height / 2 + 25);
+                    ctx.fillText("下の交代ボタンを押して仲間を出撃させてください", canvas.width / 2, canvas.height / 2 + 25);
                 } else if (isCleared) {
                     ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -842,15 +826,19 @@ with ctrl_col1:
             st.session_state.attack_level += 1
             st.session_state.game_started = False
             st.session_state.enemy_hp = None
+            st.session_state.must_swap = False
             st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()
         else:
             st.success("🎉 全10ステージ完全踏破！魔王を討伐しました！")
 
 with ctrl_col2:
-    if st.button("👥 倒れたキャラを「死亡」扱いにして次の仲間と交代", use_container_width=True):
+    # 交代ボタンを強調表示
+    swap_btn_type = "primary" if st.session_state.must_swap else "secondary"
+    if st.button("👥 倒れたキャラを「死亡」扱いにして次の仲間と交代", use_container_width=True, type=swap_btn_type):
         st.session_state.players[st.session_state.active_player_idx]["hp"] = 0
         st.session_state.game_started = False
+        st.session_state.must_swap = False # 交代処理を行ったのでロック解除
         
         next_idx = None
         for i, p in enumerate(st.session_state.players):

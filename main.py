@@ -838,11 +838,11 @@ ctrl_col1, ctrl_col2 = st.columns(2)
 with ctrl_col1:
     if st.button("⚔️ 次のステージへ進む（ステージ進行・成長Lvアップ）", use_container_width=True, type="primary"):
         if current_stage < 10:
-            st.session_stage.stage += 1
-            st.session_stage.attack_level += 1
+            st.session_state.stage += 1
+            st.session_state.attack_level += 1
             st.session_state.game_started = False
             st.session_state.enemy_hp = None
-            st.success(f"Stage {st.session_stage.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
+            st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()
         else:
             st.success("🎉 全10ステージ完全踏破！魔王を討伐しました！")

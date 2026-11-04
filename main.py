@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（超知能・高機動回避AI改修版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（後半ボス特殊スキル＆味方追尾弾搭載版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -116,10 +116,9 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【新・超知能AI戦術ガイド】**
-* 🧠 **予測射撃＆サイドストレイフ（陣形維持）**: 敵は単に正面に立つだけでなく、プレイヤーの移動先を予測して挟み撃ちするポジションを取ります。
-* ⚡ **高精度ディフレクション回避（スマートダッシュ）**: プレイヤーの弾が迫ると、敵は予測軌道を計算して**一瞬でサイドへ高速ステップ回避**します！
-* 🦅 **ダイブアタック（急襲プレッシャー）**: 安全基地にこもるプレイヤーに対し、上空から一気に距離を詰めてプレッシャーをかけます。
+**【アップデート情報】**
+* 🕷️🔥 **ステージ後半ボス特殊スキル追加**: ステージ6〜10のボスは、毒沼生成、炎の旋風、吸血コウモリ、メテオ、魔王の空間テレポート弾などの強力な特殊スキルを使用します！
+* 💫 **味方の追尾弾システム**: 攻撃時に確率（成長Lvに応じてアップ）で敵を自動追尾する高精度エネルギー弾（シアン色の光弾）が追加発射されます！
 """)
 
 if not st.session_state.game_started:
@@ -180,7 +179,8 @@ else:
                 targetY: 80,
                 baseY: 80,
                 aiState: "WAIT",
-                dodgeCooldown: 0
+                dodgeCooldown: 0,
+                specialTimer: 0
             };
             
             let obstacles = [
@@ -193,6 +193,7 @@ else:
             
             let bullets = [];
             let playerBullets = [];
+            let specialEffects = []; // ステージ後半の毒沼や炎などのエフェクト
             
             let keys = {};
             let frameCount = 0;
@@ -220,6 +221,7 @@ else:
                 let numStreams = Math.min(5, 1 + Math.floor((attackLevel - 1) / 2));
                 let dmgBonus = (attackLevel - 1) * 4;
 
+                // 基本攻撃の発射
                 if (player.style === "laser") {
                     for (let i = 0; i < numStreams; i++) {
                         let offsetX = (i - Math.floor(numStreams / 2)) * 14;
@@ -263,9 +265,100 @@ else:
                         });
                     }
                 }
+
+                // 確率で追尾弾（Homing Missile）を追加発射（確率: 35% + 成長Lv*5%）
+                let homingChance = 0.35 + (attackLevel * 0.05);
+                if (Math.random() < homingChance) {
+                    playerBullets.push({
+                        x: player.x,
+                        y: player.y - 30,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: -8,
+                        size: 9,
+                        type: "homing",
+                        speed: 7.5,
+                        damage: 18 + dmgBonus
+                    });
+                }
             }
 
-            // 完全刷新された超知能・高機動回避AIエンジン
+            // 後半ステージボスの特殊スキル実行エンジン
+            function triggerLateStageSpecialSkill() {
+                if (stage < 6) return;
+                enemy.specialTimer++;
+
+                if (stage === 6 && enemy.specialTimer % 180 === 0) {
+                    // 猛毒の大蜘蛛：床に毒沼エフェクトをばらまく
+                    enemy.aiState = "SKILL: 猛毒スプレッド";
+                    for (let i = 0; i < 3; i++) {
+                        specialEffects.push({
+                            x: 200 + i * 350,
+                            y: 350,
+                            radius: 50,
+                            duration: 180,
+                            type: "poison",
+                            color: "rgba(34, 197, 94, 0.4)"
+                        });
+                    }
+                } else if (stage === 7 && enemy.specialTimer % 150 === 0) {
+                    // 炎をまとうキマイラ：炎の旋風弾を全方位に発射
+                    enemy.aiState = "SKILL: 炎獄フレア";
+                    let count = 12;
+                    for (let i = 0; i < count; i++) {
+                        let angle = (Math.PI * 2 / count) * i;
+                        bullets.push({
+                            x: enemy.x, y: enemy.y,
+                            vx: Math.cos(angle) * 3.0,
+                            vy: Math.sin(angle) * 3.0,
+                            size: 10,
+                            color: "#ff6600",
+                            isFire: true
+                        });
+                    }
+                } else if (stage === 8 && enemy.specialTimer % 200 === 0) {
+                    // 冷酷なヴァンパイア：吸血コウモリ弾（高速ホーミング弾）発射
+                    enemy.aiState = "SKILL: 吸血コウモリ";
+                    for (let i = -1; i <= 1; i++) {
+                        bullets.push({
+                            x: enemy.x + i * 40,
+                            y: enemy.y + 30,
+                            vx: i * 2.0,
+                            vy: 4.0,
+                            size: 8,
+                            color: "#ec4899",
+                            isVampireBat: true
+                        });
+                    }
+                } else if (stage === 9 && enemy.specialTimer % 220 === 0) {
+                    // 古のレッドドラゴン：メテオ落下プレッシャー
+                    enemy.aiState = "SKILL: 竜王メテオ";
+                    specialEffects.push({
+                        x: player.x,
+                        y: 0,
+                        targetY: player.y,
+                        radius: 65,
+                        duration: 60,
+                        type: "meteor",
+                        color: "rgba(239, 68, 68, 0.6)"
+                    });
+                } else if (stage === 10 && enemy.specialTimer % 140 === 0) {
+                    // 魔界の君主・魔王：空間テレポート弾幕＋ダークレイザー
+                    enemy.aiState = "SKILL: 魔王の次元崩壊";
+                    enemy.x = 200 + Math.random() * 700; // テレポート移動
+                    let count = 16;
+                    for (let i = 0; i < count; i++) {
+                        let angle = (Math.PI / count) * i;
+                        bullets.push({
+                            x: enemy.x, y: enemy.y,
+                            vx: Math.cos(angle) * 4.5,
+                            vy: Math.sin(angle) * 4.5 + 1.0,
+                            size: 10,
+                            color: "#8b5cf6"
+                        });
+                    }
+                }
+            }
+
             function updateAdvancedTacticalAI() {
                 if (!enemyActive) return;
 
@@ -273,37 +366,34 @@ else:
                     enemy.dodgeCooldown--;
                 }
 
-                enemy.aiState = "STRAFE (予測射撃)";
+                enemy.aiState = "STRAFE (戦術機動)";
                 
-                // 1. 高精度弾丸回避（SMART_DODGE）
-                // プレイヤーの弾が敵に向かって直撃コースにある場合、高確率で横へ高速ステップダッシュ
+                // 後半ボスの特殊スキル呼び出し
+                triggerLateStageSpecialSkill();
+
+                // 弾丸回避
                 for (let pb of playerBullets) {
                     let distX = Math.abs(pb.x - enemy.x);
                     let distY = enemy.y - pb.y;
-                    // 弾が下から迫っており、敵に命中する軌道線上にあるか
                     if (distX < 65 && distY > 0 && distY < 250 && enemy.dodgeCooldown === 0) {
                         enemy.aiState = "DODGE (回避ステップ)";
                         let escapeDir = (pb.x > enemy.x) ? -1 : 1;
-                        enemy.targetX = enemy.x + escapeDir * 140; // 大きくサイドへスライド
-                        enemy.dodgeCooldown = 25; // 連続回避を防ぐクールダウン
+                        enemy.targetX = enemy.x + escapeDir * 140;
+                        enemy.dodgeCooldown = 25;
                         break;
                     }
                 }
 
-                // 2. プレイヤーの位置に応じた戦術移動（通常時はプレイヤーを翻弄するジグザグストレイフ）
                 if (enemy.dodgeCooldown === 0) {
                     let timeFactor = frameCount * 0.05;
-                    // プレイヤーの左右どちらかの死角や、前壁の隙間を狙うアグレッシブなポジショニング
                     let offsetTargetX = player.x + Math.sin(timeFactor) * 220;
                     
-                    // もしプレイヤーが安全基地（中央付近）に隠れているなら、左右の壁際に回り込んで十字砲火を狙う
                     let isInsideBunker = (player.x >= 450 && player.x <= 650 && player.y >= 330);
                     if (isInsideBunker) {
                         enemy.aiState = "FLANK (基地狙撃)";
                         offsetTargetX = (Math.floor(frameCount / 90) % 2 === 0) ? 300 : 800;
                     }
 
-                    // 一定確率で上空からプレッシャーをかけるダイブアタック
                     if (stage >= 5 && frameCount % 300 > 240) {
                         enemy.aiState = "DIVE (急襲)";
                         enemy.targetY = 200;
@@ -314,15 +404,13 @@ else:
                     enemy.targetX = offsetTargetX;
                 }
 
-                // マップ端制限
                 enemy.targetX = Math.max(100, Math.min(canvas.width - 100, enemy.targetX));
 
-                // 高機動レスポンス（機敏な追従速度）
                 let responseSpeed = 0.08 + (stage * 0.012);
                 enemy.x += (enemy.targetX - enemy.x) * responseSpeed;
                 enemy.y += (enemy.targetY - enemy.y) * responseSpeed;
 
-                // 多彩な弾幕発射
+                // 通常弾幕発射
                 let freq = Math.max(8, 35 - (stage * 3));
                 if (frameCount % freq === 0) {
                     if (stage <= 2) {
@@ -337,7 +425,6 @@ else:
                             bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.8, vy: Math.sin(angle) * 3.8 + 1.2, size: 8, color: "#a855f7" });
                         }
                     } else {
-                        // 高難度：全方位ニードル＆ホーミング弾幕
                         let count = 16;
                         let wave = Math.sin(frameCount * 0.12) * 3.0;
                         for (let i = 0; i < count; i++) {
@@ -379,11 +466,44 @@ else:
 
                 updateAdvancedTacticalAI();
 
+                // 特殊エフェクト（毒沼・メテオ等）の処理
+                for (let i = specialEffects.length - 1; i >= 0; i--) {
+                    let eff = specialEffects[i];
+                    eff.duration--;
+                    if (eff.type === "poison") {
+                        let dist = Math.hypot(player.x - eff.x, player.y - eff.y);
+                        if (dist < eff.radius + player.size/2) {
+                            player.hp -= 0.3; // 継続ダメージ
+                            if (player.hp <= 0) isGameOver = true;
+                        }
+                    } else if (eff.type === "meteor") {
+                        if (eff.duration === 1) {
+                            let dist = Math.hypot(player.x - eff.x, player.y - eff.targetY);
+                            if (dist < eff.radius + player.size/2) {
+                                player.hp -= 25; // メテオ直撃ダメージ
+                                if (player.hp <= 0) isGameOver = true;
+                            }
+                        }
+                    }
+                    if (eff.duration <= 0) {
+                        specialEffects.splice(i, 1);
+                    }
+                }
+
                 // 敵弾判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
+
+                    if (b.isVampireBat) {
+                        // ヴァンパイアバットはプレイヤーを緩やかに追尾
+                        let angle = Math.atan2(player.y - b.y, player.x - b.x);
+                        b.vx += Math.cos(angle) * 0.2;
+                        b.vy += Math.sin(angle) * 0.2;
+                        let spd = Math.hypot(b.vx, b.vy);
+                        if (spd > 4.5) { b.vx = (b.vx/spd)*4.5; b.vy = (b.vy/spd)*4.5; }
+                    }
 
                     let hitObstacle = false;
                     for (let obs of obstacles) {
@@ -417,9 +537,22 @@ else:
                     }
                 }
 
-                // プレイヤー攻撃弾判定
+                // プレイヤー攻撃弾判定（追尾弾対応）
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
+                    
+                    if (pb.type === "homing") {
+                        // 敵の位置へ向かって追尾
+                        let angle = Math.atan2(enemy.y - pb.y, enemy.x - pb.x);
+                        pb.vx += Math.cos(angle) * 0.6;
+                        pb.vy += Math.sin(angle) * 0.6;
+                        let spd = Math.hypot(pb.vx, pb.vy);
+                        if (spd > pb.speed) {
+                            pb.vx = (pb.vx / spd) * pb.speed;
+                            pb.vy = (pb.vy / spd) * pb.speed;
+                        }
+                    }
+
                     pb.x += pb.vx;
                     pb.y += pb.vy;
 
@@ -452,7 +585,7 @@ else:
                         continue;
                     }
 
-                    if (pb.y < 0) {
+                    if (pb.y < 0 || pb.y > canvas.height || pb.x < 0 || pb.x > canvas.width) {
                         playerBullets.splice(i, 1);
                     }
                 }
@@ -471,6 +604,18 @@ else:
                 }
                 for (let y = 0; y < canvas.height; y += 50) {
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                }
+
+                // 特殊エフェクト描画
+                for (let eff of specialEffects) {
+                    ctx.fillStyle = eff.color;
+                    ctx.beginPath();
+                    if (eff.type === "poison") {
+                        ctx.arc(eff.x, eff.y, eff.radius, 0, Math.PI * 2);
+                    } else if (eff.type === "meteor") {
+                        ctx.arc(eff.x, eff.targetY, eff.radius * (1 - eff.duration / 60), 0, Math.PI * 2);
+                    }
+                    ctx.fill();
                 }
 
                 // 障害物
@@ -508,7 +653,7 @@ else:
 
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 14px sans-serif";
-                ctx.fillText(`Stage ${stage}: ${enemy.name} [AI: ${enemy.aiState || 'WAIT'}]`, enemy.x, enemy.y - 58);
+                ctx.fillText(`Stage ${stage}: ${enemy.name} [${enemy.aiState || 'WAIT'}]`, enemy.x, enemy.y - 58);
 
                 ctx.fillStyle = "#333";
                 ctx.fillRect(enemy.x - 70, enemy.y - 48, 140, 10);
@@ -556,6 +701,12 @@ else:
                     } else if (pb.type === "slash") {
                         ctx.fillStyle = "#ffdd00";
                         ctx.beginPath(); ctx.ellipse(pb.x, pb.y, pb.width/2, pb.height/2, 0, 0, Math.PI * 2); ctx.fill();
+                    } else if (pb.type === "homing") {
+                        ctx.fillStyle = "#22d3ee";
+                        ctx.beginPath(); ctx.arc(pb.x, pb.y, pb.size, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = "#fff";
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
                     }
                 }
 

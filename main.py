@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（究極ボス覚醒・バリア＆分身強化版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（反射弾幕＆要塞陣形ステージ）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -131,7 +131,7 @@ st.markdown("---")
 if all_dead:
     st.error("💀 参戦可能なパーティメンバーが全員死亡しました。GAME OVERです！「ゲームリセット」ボタンで最初からやり直してください。")
 elif not st.session_state.game_started:
-    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（ボスはさらに強力なプロテクトバリアや幻影分身を展開します！）")
+    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（味方・敵の弾が障害物の壁で反射する反射弾幕ステージです！）")
 else:
     game_html_template = """
     <!DOCTYPE html>
@@ -193,15 +193,28 @@ else:
                 isEnraged: false,
                 hasBarrier: false,
                 barrierTimer: 0,
-                clones: [] // 幻影分身
+                clones: []
             };
             
+            // 障害物を大幅に増加・配置（中央要塞 ＋ 左右対称の多重バリケード構造）
             let obstacles = [
-                { x: 480, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true },
-                { x: 620, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true },
-                { x: 550, y: 330, w: 140, h: 20, hp: 999, maxHp: 999, indestructible: true },
-                { x: 250, y: 230, w: 100, h: 20, hp: 120, maxHp: 120 },
-                { x: 850, y: 230, w: 100, h: 20, hp: 120, maxHp: 120 }
+                // 中央要塞ウォール
+                { x: 470, y: 370, w: 20, h: 100, hp: 999, maxHp: 999, indestructible: true },
+                { x: 630, y: 370, w: 20, h: 100, hp: 999, maxHp: 999, indestructible: true },
+                { x: 550, y: 310, w: 160, h: 20, hp: 999, maxHp: 999, indestructible: true },
+                
+                // ミドル・バリケード（左右）
+                { x: 300, y: 280, w: 90, h: 20, hp: 150, maxHp: 150 },
+                { x: 800, y: 280, w: 90, h: 20, hp: 150, maxHp: 150 },
+                
+                // フロント・サイドピラー
+                { x: 160, y: 380, w: 25, h: 80, hp: 999, maxHp: 999, indestructible: true },
+                { x: 940, y: 380, w: 25, h: 80, hp: 999, maxHp: 999, indestructible: true },
+                
+                // アッパー・ディフェンス壁
+                { x: 350, y: 160, w: 20, h: 70, hp: 120, maxHp: 120 },
+                { x: 750, y: 160, w: 20, h: 70, hp: 120, maxHp: 120 },
+                { x: 550, y: 170, w: 100, h: 18, hp: 999, maxHp: 999, indestructible: true }
             ];
             
             let bullets = [];
@@ -241,7 +254,8 @@ else:
                             x: player.x + offsetX, y: player.y - 30,
                             vx: 0, vy: -18,
                             width: 6 + Math.floor(attackLevel), height: 30,
-                            type: "laser", damage: 22 + dmgBonus
+                            type: "laser", damage: 22 + dmgBonus,
+                            bounces: 0
                         });
                     }
                 } else if (player.style === "orb") {
@@ -251,7 +265,8 @@ else:
                         playerBullets.push({
                             x: player.x + (i - 1) * 10, y: player.y - 25,
                             vx: angleOffset * 5, vy: -12,
-                            size: 8, type: "orb", damage: 14 + dmgBonus
+                            size: 8, type: "orb", damage: 14 + dmgBonus,
+                            bounces: 0
                         });
                     }
                 } else if (player.style === "slash") {
@@ -261,7 +276,8 @@ else:
                             x: player.x + offsetX, y: player.y - 30,
                             vx: 0, vy: -10,
                             width: 36, height: 14,
-                            type: "slash", damage: 28 + dmgBonus
+                            type: "slash", damage: 28 + dmgBonus,
+                            bounces: 0
                         });
                     }
                 }
@@ -271,20 +287,67 @@ else:
                     playerBullets.push({
                         x: player.x, y: player.y - 30,
                         vx: (Math.random() - 0.5) * 4, vy: -8,
-                        size: 9, type: "homing", speed: 7.5, damage: 18 + dmgBonus
+                        size: 9, type: "homing", speed: 7.5, damage: 18 + dmgBonus,
+                        bounces: 0
                     });
                 }
+            }
+
+            // 弾と障害物の反射判定処理
+            function checkBulletObstacleReflection(bullet, isPlayerBullet) {
+                for (let obs of obstacles) {
+                    if (obs.hp <= 0) continue;
+
+                    let oLeft = obs.x - obs.w / 2;
+                    let oRight = obs.x + obs.w / 2;
+                    let oTop = obs.y - obs.h / 2;
+                    let oBottom = obs.y + obs.h / 2;
+
+                    let bx = bullet.x;
+                    let by = bullet.y;
+                    let bRadius = isPlayerBullet ? (bullet.type === "slash" ? 18 : 8) : bullet.size;
+
+                    // 当たり判定 (AABB)
+                    if (bx + bRadius > oLeft && bx - bRadius < oRight && by + bRadius > oTop && by - bRadius < oBottom) {
+                        // どちらの壁面からヒットしたかを判定して反射
+                        let prevX = bx - bullet.vx;
+                        let prevY = by - bullet.vy;
+
+                        let hitFromSide = (prevX <= oLeft || prevX >= oRight);
+                        let hitFromTopBottom = (prevY <= oTop || prevY >= oBottom);
+
+                        if (hitFromSide && !hitFromTopBottom) {
+                            bullet.vx *= -1;
+                            if (prevX <= oLeft) bullet.x = oLeft - bRadius - 1;
+                            else bullet.x = oRight + bRadius + 1;
+                        } else if (hitFromTopBottom && !hitFromSide) {
+                            bullet.vy *= -1;
+                            if (prevY <= oTop) bullet.y = oTop - bRadius - 1;
+                            else bullet.y = oBottom + bRadius + 1;
+                        } else {
+                            // コーナーや不明な場合は両方反転
+                            bullet.vx *= -1;
+                            bullet.vy *= -1;
+                        }
+
+                        // 破壊可能な障害物であればダメージを与える
+                        if (!obs.indestructible) {
+                            obs.hp -= isPlayerBullet ? bullet.damage * 0.3 : 5;
+                        }
+
+                        return true;
+                    }
+                }
+                return false;
             }
 
             function triggerBossMechanics() {
                 if (!enemyActive) return;
 
-                // 狂暴化判定（HPが50%以下で覚醒）
                 if (enemy.hp <= enemy.maxHp * 0.5) {
                     enemy.isEnraged = true;
                 }
 
-                // プロテクトバリアの自動展開（ステージ4以上で一定間隔でバリアを展開しダメージをガード）
                 if (stage >= 4) {
                     enemy.barrierTimer++;
                     if (enemy.barrierTimer % 350 === 180) {
@@ -295,7 +358,6 @@ else:
                     }
                 }
 
-                // 幻影分身（ステージ7以上で左右に出現しフェイク弾幕を放つ）
                 if (stage >= 7) {
                     if (enemy.specialTimer % 300 === 0) {
                         enemy.clones = [
@@ -303,14 +365,13 @@ else:
                             { x: enemy.x + 180, y: enemy.y, size: enemy.size * 0.8 }
                         ];
                     } else if (enemy.specialTimer % 300 === 120) {
-                        enemy.clones = []; // 分身消滅
+                        enemy.clones = [];
                     }
                 }
 
                 if (stage < 6) return;
                 enemy.specialTimer++;
 
-                // 重力場・ワームホールの生成
                 if (enemy.specialTimer % 240 === 0) {
                     specialEffects.push({
                         x: 550, y: 240,
@@ -422,7 +483,6 @@ else:
                 enemy.x += (enemy.targetX - enemy.x) * responseSpeed;
                 enemy.y += (enemy.targetY - enemy.y) * responseSpeed;
 
-                // 弾幕発射頻度と弾数強化
                 let freq = Math.max(5, (32 - (stage * 3)) / (enemy.isEnraged ? 1.7 : 1.0));
                 if (frameCount % Math.floor(freq) === 0) {
                     if (stage <= 2) {
@@ -443,7 +503,6 @@ else:
                             let angle = (Math.PI / count) * i + wave;
                             bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 5.2, vy: Math.sin(angle) * 5.2 + 1.6, size: 9, color: "#f43f5e" });
                         }
-                        // 分身からもフェイク弾発射
                         for (let clone of enemy.clones) {
                             bullets.push({ x: clone.x, y: clone.y + 40, vx: (Math.random()-0.5)*3, vy: 3.5, size: 7, color: "#cbd5e1" });
                         }
@@ -516,7 +575,7 @@ else:
                     }
                 }
 
-                // 敵弾判定
+                // 敵弾判定 ＆ 障害物反射
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
@@ -530,24 +589,8 @@ else:
                         if (spd > 5.2) { b.vx = (b.vx/spd)*5.2; b.vy = (b.vy/spd)*5.2; }
                     }
 
-                    let hitObstacle = false;
-                    for (let obs of obstacles) {
-                        if (obs.hp > 0) {
-                            let oLeft = obs.x - obs.w / 2;
-                            let oRight = obs.x + obs.w / 2;
-                            let oTop = obs.y - obs.h / 2;
-                            let oBottom = obs.y + obs.h / 2;
-                            if (b.x >= oLeft && b.x <= oRight && b.y >= oTop && b.y <= oBottom) {
-                                hitObstacle = true;
-                                if (!obs.indestructible) obs.hp -= 3;
-                                break;
-                            }
-                        }
-                    }
-                    if (hitObstacle) {
-                        bullets.splice(i, 1);
-                        continue;
-                    }
+                    // 障害物反射チェック
+                    checkBulletObstacleReflection(b, false);
 
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
@@ -565,7 +608,7 @@ else:
                     }
                 }
 
-                // プレイヤー攻撃弾判定
+                // プレイヤー攻撃弾判定 ＆ 障害物反射
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     
@@ -583,30 +626,14 @@ else:
                     pb.x += pb.vx;
                     pb.y += pb.vy;
 
-                    let hitObs = false;
-                    for (let obs of obstacles) {
-                        if (obs.hp > 0) {
-                            let oLeft = obs.x - obs.w / 2;
-                            let oRight = obs.x + obs.w / 2;
-                            let oTop = obs.y - obs.h / 2;
-                            let oBottom = obs.y + obs.h / 2;
-                            if (pb.x >= oLeft && pb.x <= oRight && pb.y >= oTop && pb.y <= oBottom) {
-                                hitObs = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (hitObs) {
-                        playerBullets.splice(i, 1);
-                        continue;
-                    }
+                    // 障害物反射チェック
+                    checkBulletObstacleReflection(pb, true);
 
                     let hitRadius = pb.type === "slash" ? 25 : (pb.type === "laser" ? 12 : 10);
                     let dist = Math.hypot(pb.x - enemy.x, pb.y - enemy.y);
                     if (dist < (enemy.size / 2 + hitRadius)) {
-                        // バリア展開中はダメージ無効
                         if (enemy.hasBarrier) {
-                            // バリアに弾が弾かれたエフェクト等
+                            // バリア弾き
                         } else {
                             enemy.hp -= pb.damage;
                         }
@@ -687,7 +714,7 @@ else:
                     ctx.beginPath(); ctx.arc(clone.x, clone.y, clone.size/2, 0, Math.PI*2); ctx.fill();
                 }
 
-                // 敵（狂暴化＆バリアエフェクト）
+                // 敵
                 if (enemy.isEnraged) {
                     ctx.shadowBlur = 25;
                     ctx.shadowColor = "#ff2222";
@@ -699,7 +726,6 @@ else:
                     ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.size/2, 0, Math.PI*2); ctx.fill();
                 }
 
-                // プロテクトバリアのシールド描画
                 if (enemy.hasBarrier) {
                     ctx.strokeStyle = "#00ffff";
                     ctx.lineWidth = 4;
@@ -812,11 +838,11 @@ ctrl_col1, ctrl_col2 = st.columns(2)
 with ctrl_col1:
     if st.button("⚔️ 次のステージへ進む（ステージ進行・成長Lvアップ）", use_container_width=True, type="primary"):
         if current_stage < 10:
-            st.session_state.stage += 1
-            st.session_state.attack_level += 1
+            st.session_stage.stage += 1
+            st.session_stage.attack_level += 1
             st.session_state.game_started = False
             st.session_state.enemy_hp = None
-            st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
+            st.success(f"Stage {st.session_stage.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()
         else:
             st.success("🎉 全10ステージ完全踏破！魔王を討伐しました！")

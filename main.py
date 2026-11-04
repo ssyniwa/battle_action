@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（3方向壁の安全基地・防衛システム搭載版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（3方向壁の安全基地・動的トリガー版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -113,14 +113,11 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦闘ガイド（3方向安全基地システム搭載）】**
-* **操作方法**: 左右矢印キー（または A/Dキー）で自機移動 ｜ **Zキー**でキャラクター固有攻撃発射！
-* **安全基地（3方向の壁）**: 
-  * 味方の初期配置地点の**左右および前方（敵側）**に、頑丈な要塞の壁（3方向の障壁）が設置されています。
-  * スタート地点や基地内は**3方向が壁で守られた安全地帯**になっており、敵からの弾幕を完璧にガードできます！
-  * 攻撃する時は基地の隙間から顔を出して反撃しよう！
-* **キャラ別攻撃スタイル**: 
-  * 🔴 **戦士アレル（レーザー光線）** ｜ 🔵 **魔術師ミリア（魔法弾）** ｜ 🟡 **聖騎士レオン（剣撃）**
+**【戦闘ガイド】**
+* **敵の攻撃開始タイミング**: 「戦闘開始」後、あなたが**移動キー（矢印/WASD）を押すか、攻撃（Zキー）を行った瞬間**に敵の移動と弾幕射撃が開始します！
+* **狭い射撃壁（安全基地）**: 
+  * 味方の周りは狭い隙間だけが空いた高密度壁で囲まれています。
+  * 隙間を慎重に狙って攻撃を繰り出そう！
 """)
 
 if not st.session_state.game_started:
@@ -179,16 +176,16 @@ else:
                 moveTimer: 0
             };
             
-            // プレイヤーの初期配置を守る「3方向の壁（左壁・右壁・前壁）」＋フィールド上の追加障害物
+            // 壁の隙間をより狭く調整（左壁、右壁、前壁の隙間寸法を絞る）
             let obstacles = [
-                // 3方向安全基地（アルコーブ／要塞バンカー）
-                { x: 450, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 左壁
-                { x: 650, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 右壁
-                { x: 550, y: 330, w: 120, h: 20, hp: 999, maxHp: 999, indestructible: true },// 前壁（敵側を防衛）
+                // 3方向安全基地（狭い隙間バンカー）
+                { x: 480, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 左壁（幅狭化）
+                { x: 620, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 右壁（幅狭化）
+                { x: 550, y: 330, w: 140, h: 20, hp: 999, maxHp: 999, indestructible: true },// 前壁（隙間を狭く設定）
                 
-                // フィールド上の通常障害物
-                { x: 280, y: 230, w: 90, h: 20, hp: 120, maxHp: 120 },
-                { x: 820, y: 230, w: 90, h: 20, hp: 120, maxHp: 120 }
+                // フィールドの追加障害物
+                { x: 250, y: 230, w: 100, h: 20, hp: 120, maxHp: 120 },
+                { x: 850, y: 230, w: 100, h: 20, hp: 120, maxHp: 120 }
             ];
             
             let bullets = [];
@@ -198,9 +195,18 @@ else:
             let frameCount = 0;
             let isGameOver = false;
             let isCleared = false;
+            let enemyActive = false; // プレイヤーが行動（移動・攻撃）を開始するまで敵は停止
 
             window.addEventListener("keydown", (e) => {
                 keys[e.code] = true;
+                
+                // 味方が移動キーまたは攻撃キーを押したら敵が攻撃を開始
+                if (!enemyActive) {
+                    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS", "KeyZ", "KeyY"].includes(e.code)) {
+                        enemyActive = true;
+                    }
+                }
+
                 if ((e.code === "KeyZ" || e.code === "KeyY") && !isGameOver && !isCleared) {
                     shootPlayerAttack();
                     e.preventDefault();
@@ -256,8 +262,10 @@ else:
                 }
             }
 
-            // ステージごとに強化・進化する敵の弾幕パターン
+            // ステージごとに強化・進化する敵の弾幕パターン（enemyActive時のみ生成）
             function spawnEnemyBullets() {
+                if (!enemyActive) return;
+
                 let freq = Math.max(10, 42 - (stage * 3));
                 
                 if (frameCount % freq === 0) {
@@ -343,13 +351,11 @@ else:
                         let oTop = obs.y - obs.h / 2;
                         let oBottom = obs.y + obs.h / 2;
                         
-                        // X方向のチェック
                         if (player.y + player.size/2 > oTop && player.y - player.size/2 < oBottom) {
                             if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
                                 canMoveX = false;
                             }
                         }
-                        // Y方向のチェック
                         if (player.x + player.size/2 > oLeft && player.x - player.size/2 < oRight) {
                             if (nextY + player.size/2 > oTop && nextY - player.size/2 < oBottom) {
                                 canMoveY = false;
@@ -360,21 +366,22 @@ else:
                 if (canMoveX) player.x = nextX;
                 if (canMoveY) player.y = nextY;
 
-                // 敵の移動
-                let moveSpeedFactor = 0.05 + (stage * 0.008);
-                let moveWidthFactor = 200 + (stage * 15);
-                enemy.moveTimer += moveSpeedFactor;
-                enemy.x = 550 + Math.sin(enemy.moveTimer) * moveWidthFactor;
+                // 敵の移動（enemyActive時のみ移動）
+                if (enemyActive) {
+                    let moveSpeedFactor = 0.05 + (stage * 0.008);
+                    let moveWidthFactor = 200 + (stage * 15);
+                    enemy.moveTimer += moveSpeedFactor;
+                    enemy.x = 550 + Math.sin(enemy.moveTimer) * moveWidthFactor;
+                }
 
                 spawnEnemyBullets();
 
-                // 敵の弾の移動と、プレイヤー・障害物との当たり判定
+                // 敵の弾の移動と判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
                     let b = bullets[i];
                     b.x += b.vx;
                     b.y += b.vy;
 
-                    // 障害物との衝突判定
                     let hitObstacle = false;
                     for (let obs of obstacles) {
                         if (obs.hp > 0) {
@@ -398,7 +405,6 @@ else:
                         continue;
                     }
 
-                    // プレイヤーとの衝突判定
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
                         player.hp -= (8 + stage * 2);
@@ -414,7 +420,7 @@ else:
                     }
                 }
 
-                // 味方の攻撃弾の移動と敵・障害物への当たり判定
+                // 味方の攻撃弾の移動と判定
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     pb.x += pb.vx;
@@ -463,7 +469,6 @@ else:
                 ctx.fillStyle = "#0f111a";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // 背景グリッド
                 ctx.strokeStyle = "#1c2130";
                 ctx.lineWidth = 1;
                 for (let x = 0; x < canvas.width; x += 50) {
@@ -473,11 +478,11 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                // 障害物（3方向の安全壁含む）の描画
+                // 障害物描画
                 for (let obs of obstacles) {
                     if (obs.hp > 0) {
                         if (obs.indestructible) {
-                            ctx.fillStyle = "#2b6cb0"; // 安全基地の青みがかった頑丈な壁
+                            ctx.fillStyle = "#2b6cb0";
                             ctx.strokeStyle = "#63b3ed";
                         } else {
                             ctx.fillStyle = "#4a5568";
@@ -506,7 +511,6 @@ else:
                     ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.size/2, 0, Math.PI*2); ctx.fill();
                 }
 
-                // 敵名・HPバー
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 14px sans-serif";
                 ctx.fillText(`Stage ${stage}: ${enemy.name}`, enemy.x, enemy.y - 58);
@@ -516,6 +520,13 @@ else:
                 ctx.fillStyle = "#e74c3c";
                 ctx.fillRect(enemy.x - 70, enemy.y - 48, 140 * (Math.max(0, enemy.hp) / enemy.maxHp), 10);
 
+                // 敵未アクティブ時の待機メッセージ表示
+                if (!enemyActive) {
+                    ctx.fillStyle = "#ffff00";
+                    ctx.font = "bold 18px sans-serif";
+                    ctx.fillText("READY... (移動キーまたはZキーで戦闘開始)", canvas.width / 2, enemy.y + 80);
+                }
+
                 // 自機画像
                 if (playerLoaded) {
                     ctx.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
@@ -524,7 +535,6 @@ else:
                     ctx.beginPath(); ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2); ctx.fill();
                 }
 
-                // 自機名・HPバー
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 13px sans-serif";
                 ctx.fillText(`${player.name} (${player.style === 'laser' ? 'レーザー' : player.style === 'orb' ? '魔法弾' : '剣撃'})`, player.x, player.y + 46);
@@ -534,7 +544,7 @@ else:
                 ctx.fillStyle = "#2ecc71";
                 ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / player.maxHp), 9);
 
-                // 敵の弾の描画
+                // 弾の描画
                 for (let b of bullets) {
                     ctx.fillStyle = b.color;
                     ctx.beginPath();
@@ -548,7 +558,6 @@ else:
                     ctx.fill();
                 }
 
-                // キャラクター固有の攻撃エフェクト描画
                 for (let pb of playerBullets) {
                     if (pb.type === "laser") {
                         ctx.fillStyle = "#ff2222";

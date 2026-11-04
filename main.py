@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（交代引き継ぎ＆パーティ全滅システム搭載）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（究極ボス覚醒・バリア＆分身強化版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -54,7 +54,6 @@ current_stage = st.session_state.stage
 current_enemy_name = ENEMY_NAMES.get(current_stage, "強敵")
 enemy_max_hp = 90 + (current_stage * 45)
 
-# 初回またはステージ遷移時に敵HPをセット
 if st.session_state.enemy_hp is None:
     st.session_state.enemy_hp = enemy_max_hp
 
@@ -64,7 +63,6 @@ player_img_base64 = get_image_base64(active_p["file"])
 enemy_img_path = f"assets/enemy{current_stage}.jpg"
 enemy_img_base64 = get_image_base64(enemy_img_path)
 
-# パーティ全滅判定
 all_dead = all(p["hp"] <= 0 for p in st.session_state.players)
 
 # --- UI コントロール・ステータス表示 ---
@@ -133,7 +131,7 @@ st.markdown("---")
 if all_dead:
     st.error("💀 参戦可能なパーティメンバーが全員死亡しました。GAME OVERです！「ゲームリセット」ボタンで最初からやり直してください。")
 elif not st.session_state.game_started:
-    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（味方が倒れても敵のHPダメージはそのまま引き継がれます）")
+    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（ボスはさらに強力なプロテクトバリアや幻影分身を展開します！）")
 else:
     game_html_template = """
     <!DOCTYPE html>
@@ -192,7 +190,10 @@ else:
                 aiState: "WAIT",
                 dodgeCooldown: 0,
                 specialTimer: 0,
-                isEnraged: false
+                isEnraged: false,
+                hasBarrier: false,
+                barrierTimer: 0,
+                clones: [] // 幻影分身
             };
             
             let obstacles = [
@@ -278,18 +279,43 @@ else:
             function triggerBossMechanics() {
                 if (!enemyActive) return;
 
+                // 狂暴化判定（HPが50%以下で覚醒）
                 if (enemy.hp <= enemy.maxHp * 0.5) {
                     enemy.isEnraged = true;
+                }
+
+                // プロテクトバリアの自動展開（ステージ4以上で一定間隔でバリアを展開しダメージをガード）
+                if (stage >= 4) {
+                    enemy.barrierTimer++;
+                    if (enemy.barrierTimer % 350 === 180) {
+                        enemy.hasBarrier = true;
+                        enemy.aiState = "🛡️ プロテクトバリア展開";
+                    } else if (enemy.barrierTimer % 350 === 300) {
+                        enemy.hasBarrier = false;
+                    }
+                }
+
+                // 幻影分身（ステージ7以上で左右に出現しフェイク弾幕を放つ）
+                if (stage >= 7) {
+                    if (enemy.specialTimer % 300 === 0) {
+                        enemy.clones = [
+                            { x: enemy.x - 180, y: enemy.y, size: enemy.size * 0.8 },
+                            { x: enemy.x + 180, y: enemy.y, size: enemy.size * 0.8 }
+                        ];
+                    } else if (enemy.specialTimer % 300 === 120) {
+                        enemy.clones = []; // 分身消滅
+                    }
                 }
 
                 if (stage < 6) return;
                 enemy.specialTimer++;
 
-                if (enemy.specialTimer % 250 === 0) {
+                // 重力場・ワームホールの生成
+                if (enemy.specialTimer % 240 === 0) {
                     specialEffects.push({
                         x: 550, y: 240,
-                        radius: 120,
-                        duration: 140,
+                        radius: 130,
+                        duration: 150,
                         type: "gravity",
                         color: "rgba(147, 51, 234, 0.35)"
                     });
@@ -304,43 +330,43 @@ else:
                             type: "poison", color: "rgba(34, 197, 94, 0.4)"
                         });
                     }
-                } else if (stage === 7 && enemy.specialTimer % 150 === 0) {
+                } else if (stage === 7 && enemy.specialTimer % 140 === 0) {
                     enemy.aiState = "SKILL: 炎獄フレア";
-                    let count = 12;
+                    let count = 14;
                     for (let i = 0; i < count; i++) {
                         let angle = (Math.PI * 2 / count) * i;
                         bullets.push({
                             x: enemy.x, y: enemy.y,
-                            vx: Math.cos(angle) * 3.2, vy: Math.sin(angle) * 3.2,
+                            vx: Math.cos(angle) * 3.5, vy: Math.sin(angle) * 3.5,
                             size: 10, color: "#ff6600"
                         });
                     }
-                } else if (stage === 8 && enemy.specialTimer % 200 === 0) {
+                } else if (stage === 8 && enemy.specialTimer % 180 === 0) {
                     enemy.aiState = "SKILL: 吸血コウモリ";
                     for (let i = -1; i <= 1; i++) {
                         bullets.push({
                             x: enemy.x + i * 40, y: enemy.y + 30,
-                            vx: i * 2.0, vy: 4.2,
+                            vx: i * 2.2, vy: 4.5,
                             size: 8, color: "#ec4899", isVampireBat: true
                         });
                     }
-                } else if (stage === 9 && enemy.specialTimer % 220 === 0) {
+                } else if (stage === 9 && enemy.specialTimer % 200 === 0) {
                     enemy.aiState = "SKILL: 竜王メテオ";
                     specialEffects.push({
                         x: player.x, y: 0, targetY: player.y,
-                        radius: 65, duration: 60,
+                        radius: 70, duration: 55,
                         type: "meteor", color: "rgba(239, 68, 68, 0.6)"
                     });
-                } else if (stage === 10 && enemy.specialTimer % 130 === 0) {
+                } else if (stage === 10 && enemy.specialTimer % 120 === 0) {
                     enemy.aiState = "SKILL: 魔王の次元崩壊";
                     enemy.x = 200 + Math.random() * 700;
-                    let count = 16;
-                    let speedMult = enemy.isEnraged ? 1.4 : 1.0;
+                    let count = 18;
+                    let speedMult = enemy.isEnraged ? 1.5 : 1.1;
                     for (let i = 0; i < count; i++) {
                         let angle = (Math.PI / count) * i;
                         bullets.push({
                             x: enemy.x, y: enemy.y,
-                            vx: Math.cos(angle) * 4.8 * speedMult, vy: Math.sin(angle) * 4.8 * speedMult + 1.0,
+                            vx: Math.cos(angle) * 5.2 * speedMult, vy: Math.sin(angle) * 5.2 * speedMult + 1.2,
                             size: 10, color: "#8b5cf6"
                         });
                     }
@@ -352,7 +378,9 @@ else:
 
                 if (enemy.dodgeCooldown > 0) enemy.dodgeCooldown--;
 
-                enemy.aiState = enemy.isEnraged ? "🔥 ENRAGED (狂暴化)" : "STRAFE (戦術機動)";
+                if (!enemy.hasBarrier) {
+                    enemy.aiState = enemy.isEnraged ? "🔥 ENRAGED (狂暴化)" : "STRAFE (戦術機動)";
+                }
                 
                 triggerBossMechanics();
 
@@ -362,27 +390,27 @@ else:
                     if (distX < 65 && distY > 0 && distY < 250 && enemy.dodgeCooldown === 0) {
                         enemy.aiState = "DODGE (回避ステップ)";
                         let escapeDir = (pb.x > enemy.x) ? -1 : 1;
-                        enemy.targetX = enemy.x + escapeDir * 140;
-                        enemy.dodgeCooldown = 25;
+                        enemy.targetX = enemy.x + escapeDir * 150;
+                        enemy.dodgeCooldown = 22;
                         break;
                     }
                 }
 
                 if (enemy.dodgeCooldown === 0) {
-                    let timeFactor = frameCount * (enemy.isEnraged ? 0.08 : 0.05);
-                    let offsetTargetX = player.x + Math.sin(timeFactor) * 220;
+                    let timeFactor = frameCount * (enemy.isEnraged ? 0.09 : 0.06);
+                    let offsetTargetX = player.x + Math.sin(timeFactor) * 240;
                     
                     let isInsideBunker = (player.x >= 450 && player.x <= 650 && player.y >= 330);
                     if (isInsideBunker) {
                         enemy.aiState = "FLANK (基地狙撃)";
-                        offsetTargetX = (Math.floor(frameCount / 90) % 2 === 0) ? 300 : 800;
+                        offsetTargetX = (Math.floor(frameCount / 90) % 2 === 0) ? 280 : 820;
                     }
 
-                    if (stage >= 5 && frameCount % 300 > 240) {
+                    if (stage >= 5 && frameCount % 280 > 220) {
                         enemy.aiState = "DIVE (急襲)";
-                        enemy.targetY = 200;
+                        enemy.targetY = 210;
                     } else {
-                        enemy.targetY = enemy.baseY + Math.cos(timeFactor * 1.5) * 20;
+                        enemy.targetY = enemy.baseY + Math.cos(timeFactor * 1.5) * 25;
                     }
 
                     enemy.targetX = offsetTargetX;
@@ -390,29 +418,34 @@ else:
 
                 enemy.targetX = Math.max(100, Math.min(canvas.width - 100, enemy.targetX));
 
-                let responseSpeed = (0.08 + (stage * 0.012)) * (enemy.isEnraged ? 1.35 : 1.0);
+                let responseSpeed = (0.09 + (stage * 0.015)) * (enemy.isEnraged ? 1.4 : 1.0);
                 enemy.x += (enemy.targetX - enemy.x) * responseSpeed;
                 enemy.y += (enemy.targetY - enemy.y) * responseSpeed;
 
-                let freq = Math.max(6, (35 - (stage * 3)) / (enemy.isEnraged ? 1.6 : 1.0));
+                // 弾幕発射頻度と弾数強化
+                let freq = Math.max(5, (32 - (stage * 3)) / (enemy.isEnraged ? 1.7 : 1.0));
                 if (frameCount % Math.floor(freq) === 0) {
                     if (stage <= 2) {
                         for (let i = -1; i <= 1; i++) {
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 2.2, vy: 3.8, size: 8, color: "#4ade80" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 2.5, vy: 4.0, size: 8, color: "#4ade80" });
                         }
                     } else if (stage <= 5) {
-                        let count = enemy.isEnraged ? 10 : 7;
-                        let offset = frameCount * 0.15;
+                        let count = enemy.isEnraged ? 12 : 8;
+                        let offset = frameCount * 0.18;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / (count - 1)) * i + offset * 0.2;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.0, vy: Math.sin(angle) * 4.0 + 1.2, size: 8, color: "#a855f7" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.2, vy: Math.sin(angle) * 4.2 + 1.4, size: 8, color: "#a855f7" });
                         }
                     } else {
-                        let count = enemy.isEnraged ? 18 : 14;
-                        let wave = Math.sin(frameCount * 0.12) * 3.0;
+                        let count = enemy.isEnraged ? 20 : 16;
+                        let wave = Math.sin(frameCount * 0.12) * 3.5;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / count) * i + wave;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.8, vy: Math.sin(angle) * 4.8 + 1.5, size: 9, color: "#f43f5e" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 5.2, vy: Math.sin(angle) * 5.2 + 1.6, size: 9, color: "#f43f5e" });
+                        }
+                        // 分身からもフェイク弾発射
+                        for (let clone of enemy.clones) {
+                            bullets.push({ x: clone.x, y: clone.y + 40, vx: (Math.random()-0.5)*3, vy: 3.5, size: 7, color: "#cbd5e1" });
                         }
                     }
                 }
@@ -456,7 +489,7 @@ else:
                     if (eff.type === "poison") {
                         let dist = Math.hypot(player.x - eff.x, player.y - eff.y);
                         if (dist < eff.radius + player.size/2) {
-                            player.hp -= 0.3;
+                            player.hp -= 0.35;
                             if (player.hp <= 0) {
                                 player.hp = 0;
                                 isGameOver = true;
@@ -466,7 +499,7 @@ else:
                         if (eff.duration === 1) {
                             let dist = Math.hypot(player.x - eff.x, player.y - eff.targetY);
                             if (dist < eff.radius + player.size/2) {
-                                player.hp -= 25;
+                                player.hp -= 28;
                                 if (player.hp <= 0) {
                                     player.hp = 0;
                                     isGameOver = true;
@@ -475,8 +508,8 @@ else:
                         }
                     } else if (eff.type === "gravity") {
                         let pullAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
-                        player.x += Math.cos(pullAngle) * 1.8;
-                        player.y += Math.sin(pullAngle) * 1.8;
+                        player.x += Math.cos(pullAngle) * 2.2;
+                        player.y += Math.sin(pullAngle) * 2.2;
                     }
                     if (eff.duration <= 0) {
                         specialEffects.splice(i, 1);
@@ -491,10 +524,10 @@ else:
 
                     if (b.isVampireBat) {
                         let angle = Math.atan2(player.y - b.y, player.x - b.x);
-                        b.vx += Math.cos(angle) * 0.22;
-                        b.vy += Math.sin(angle) * 0.22;
+                        b.vx += Math.cos(angle) * 0.25;
+                        b.vy += Math.sin(angle) * 0.25;
                         let spd = Math.hypot(b.vx, b.vy);
-                        if (spd > 4.8) { b.vx = (b.vx/spd)*4.8; b.vy = (b.vy/spd)*4.8; }
+                        if (spd > 5.2) { b.vx = (b.vx/spd)*5.2; b.vy = (b.vy/spd)*5.2; }
                     }
 
                     let hitObstacle = false;
@@ -518,7 +551,7 @@ else:
 
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
-                        player.hp -= (8 + stage * 1.5);
+                        player.hp -= (9 + stage * 1.6);
                         bullets.splice(i, 1);
                         if (player.hp <= 0) {
                             player.hp = 0;
@@ -538,8 +571,8 @@ else:
                     
                     if (pb.type === "homing") {
                         let angle = Math.atan2(enemy.y - pb.y, enemy.x - pb.x);
-                        pb.vx += Math.cos(angle) * 0.6;
-                        pb.vy += Math.sin(angle) * 0.6;
+                        pb.vx += Math.cos(angle) * 0.7;
+                        pb.vy += Math.sin(angle) * 0.7;
                         let spd = Math.hypot(pb.vx, pb.vy);
                         if (spd > pb.speed) {
                             pb.vx = (pb.vx / spd) * pb.speed;
@@ -571,7 +604,12 @@ else:
                     let hitRadius = pb.type === "slash" ? 25 : (pb.type === "laser" ? 12 : 10);
                     let dist = Math.hypot(pb.x - enemy.x, pb.y - enemy.y);
                     if (dist < (enemy.size / 2 + hitRadius)) {
-                        enemy.hp -= pb.damage;
+                        // バリア展開中はダメージ無効
+                        if (enemy.hasBarrier) {
+                            // バリアに弾が弾かれたエフェクト等
+                        } else {
+                            enemy.hp -= pb.damage;
+                        }
                         playerBullets.splice(i, 1);
                         if (enemy.hp <= 0) {
                             enemy.hp = 0;
@@ -608,7 +646,7 @@ else:
                     if (eff.type === "poison") {
                         ctx.arc(eff.x, eff.y, eff.radius, 0, Math.PI * 2);
                     } else if (eff.type === "meteor") {
-                        ctx.arc(eff.x, eff.targetY, eff.radius * (1 - eff.duration / 60), 0, Math.PI * 2);
+                        ctx.arc(eff.x, eff.targetY, eff.radius * (1 - eff.duration / 55), 0, Math.PI * 2);
                     } else if (eff.type === "gravity") {
                         ctx.arc(eff.x, eff.y, eff.radius + Math.sin(frameCount * 0.1) * 10, 0, Math.PI * 2);
                         ctx.strokeStyle = "rgba(168, 85, 247, 0.6)";
@@ -643,9 +681,15 @@ else:
                     }
                 }
 
-                // 敵
+                // 幻影分身描画
+                for (let clone of enemy.clones) {
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+                    ctx.beginPath(); ctx.arc(clone.x, clone.y, clone.size/2, 0, Math.PI*2); ctx.fill();
+                }
+
+                // 敵（狂暴化＆バリアエフェクト）
                 if (enemy.isEnraged) {
-                    ctx.shadowBlur = 20;
+                    ctx.shadowBlur = 25;
                     ctx.shadowColor = "#ff2222";
                 }
                 if (enemyLoaded) {
@@ -653,6 +697,15 @@ else:
                 } else {
                     ctx.fillStyle = enemy.isEnraged ? "#ff2222" : "#e74c3c";
                     ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.size/2, 0, Math.PI*2); ctx.fill();
+                }
+
+                // プロテクトバリアのシールド描画
+                if (enemy.hasBarrier) {
+                    ctx.strokeStyle = "#00ffff";
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, enemy.size * 0.7, 0, Math.PI * 2);
+                    ctx.stroke();
                 }
                 ctx.shadowBlur = 0;
 
@@ -762,7 +815,7 @@ with ctrl_col1:
             st.session_state.stage += 1
             st.session_state.attack_level += 1
             st.session_state.game_started = False
-            st.session_state.enemy_hp = None # 次ステージ用に敵HPをリセット
+            st.session_state.enemy_hp = None
             st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()
         else:
@@ -770,11 +823,9 @@ with ctrl_col1:
 
 with ctrl_col2:
     if st.button("👥 倒れたキャラを「死亡」扱いにして次の仲間と交代", use_container_width=True):
-        # 現在の出撃キャラのHPを0（死亡）に設定
         st.session_state.players[st.session_state.active_player_idx]["hp"] = 0
         st.session_state.game_started = False
         
-        # 次の生存キャラを探す
         next_idx = None
         for i, p in enumerate(st.session_state.players):
             if p["hp"] > 0:
@@ -783,7 +834,6 @@ with ctrl_col2:
         
         if next_idx is not None:
             st.session_state.active_player_idx = next_idx
-            # 交代したキャラは100% HPで出撃
             st.session_state.players[next_idx]["hp"] = st.session_state.players[next_idx]["maxHp"]
             st.success(f"💀 前の仲間が死亡しました... 代わりに **{st.session_state.players[next_idx]['name']}** がHP100%で出撃します！（敵のダメージはそのまま引き継がれます）")
             st.rerun()

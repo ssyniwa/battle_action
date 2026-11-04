@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（狂暴化＆重力場・究極ボス強化版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（交代引き継ぎ＆パーティ全滅システム搭載）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -27,6 +27,8 @@ if "active_player_idx" not in st.session_state:
     st.session_state.active_player_idx = 0
 if "attack_level" not in st.session_state:
     st.session_state.attack_level = 1
+if "enemy_hp" not in st.session_state:
+    st.session_state.enemy_hp = None
 
 ENEMY_NAMES = {
     1: "ぷにぷにスライム",
@@ -50,44 +52,56 @@ def get_image_base64(path):
 
 current_stage = st.session_state.stage
 current_enemy_name = ENEMY_NAMES.get(current_stage, "強敵")
+enemy_max_hp = 90 + (current_stage * 45)
+
+# 初回またはステージ遷移時に敵HPをセット
+if st.session_state.enemy_hp is None:
+    st.session_state.enemy_hp = enemy_max_hp
+
 active_p = st.session_state.players[st.session_state.active_player_idx]
 
 player_img_base64 = get_image_base64(active_p["file"])
 enemy_img_path = f"assets/enemy{current_stage}.jpg"
 enemy_img_base64 = get_image_base64(enemy_img_path)
 
+# パーティ全滅判定
+all_dead = all(p["hp"] <= 0 for p in st.session_state.players)
+
 # --- UI コントロール・ステータス表示 ---
 col1, col2, col3, col4, col5 = st.columns([2, 2, 3, 2, 2])
 
 with col1:
     st.markdown(f"### 📍 Stage {current_stage}/10")
-    st.write(f"**{current_enemy_name}**")
+    st.write(f"**{current_enemy_name}** (HP: {st.session_state.enemy_hp} / {enemy_max_hp})")
     st.markdown(f"⭐ 成長Lv: **{st.session_state.attack_level}**")
 
 with col2:
     st.markdown(f"### 🕹️ 出撃中")
     attack_desc = {"laser": "レーザー光線", "orb": "魔法弾", "slash": "剣撃"}[active_p['style']]
+    status_p = "💀 死亡" if active_p["hp"] <= 0 else f"{active_p['hp']} / {active_p['maxHp']}"
     st.markdown(f"<span style='color:{active_p['color']}; font-weight:bold;'>{active_p['name']}</span> ({attack_desc})", unsafe_allow_html=True)
-    st.write(f"HP: {active_p['hp']} / {active_p['maxHp']}")
+    st.write(f"HP: {status_p}")
 
 with col3:
     st.markdown("### 👥 パーティ生存状況")
     status_list = []
     for i, p in enumerate(st.session_state.players):
-        status = "🟢 生存" if p["hp"] > 0 else "🔴 戦闘不能"
+        status = "🟢 生存" if p["hp"] > 0 else "💀 死亡"
         prefix = "👉 " if i == st.session_state.active_player_idx else ""
-        status_list.append(f"{prefix}{p['name']}: {status} ({p['hp']}HP)")
+        status_list.append(f"{prefix}{p['name']}: {status} ({max(0, p['hp'])}HP)")
     st.write(" | ".join(status_list))
 
 with col4:
     st.markdown("### 🎮 バトル制御")
-    if not st.session_state.game_started:
+    if all_dead:
+        st.error("💀 全員死亡（GAME OVER）")
+    elif not st.session_state.game_started:
         if st.button("🔥 戦闘開始", use_container_width=True, type="primary"):
             if active_p["hp"] > 0:
                 st.session_state.game_started = True
                 st.rerun()
             else:
-                st.error("現在のキャラクターは戦闘不能です！別のキャラに交代してください。")
+                st.error("現在のキャラは死亡しています！生存している他のキャラを選択してください。")
     else:
         if st.button("⏸️ 中断 / 一時停止", use_container_width=True):
             st.session_state.game_started = False
@@ -107,7 +121,7 @@ char_cols = st.columns(len(st.session_state.players))
 for i, p in enumerate(st.session_state.players):
     with char_cols[i]:
         style_name = {"laser": "レーザー", "orb": "魔法弾", "slash": "剣撃"}[p['style']]
-        btn_label = f"選ぶ: {p['name']} [{style_name}] ({p['hp']}HP)" if p["hp"] > 0 else f"{p['name']} (戦闘不能)"
+        btn_label = f"選ぶ: {p['name']} [{style_name}] ({p['hp']}HP)" if p["hp"] > 0 else f"💀 {p['name']} (死亡)"
         disabled = (p["hp"] <= 0)
         if st.button(btn_label, disabled=disabled, use_container_width=True):
             st.session_state.active_player_idx = i
@@ -115,15 +129,11 @@ for i, p in enumerate(st.session_state.players):
             st.rerun()
 
 st.markdown("---")
-st.markdown("""
-**【究極ボス強化版のポイント】**
-* 🔥 **狂暴化フェーズ（ENRAGED）**: ボスのHPが50%以下になると覚醒！弾幕の密度とスピードが大幅にアップします。
-* 🌀 **重力場・ワームホール**: ステージ後半では、プレイヤーをボス方向へ引き寄せる重力場が発生します！
-* 💫 **味方の追尾弾システム**: 攻撃時に確率でシアン色の追尾エネルギー弾が追加発射されます。
-""")
 
-if not st.session_state.game_started:
-    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！")
+if all_dead:
+    st.error("💀 参戦可能なパーティメンバーが全員死亡しました。GAME OVERです！「ゲームリセット」ボタンで最初からやり直してください。")
+elif not st.session_state.game_started:
+    st.info("👆 上の **「戦闘開始」** ボタンを押すとバトルがスタートします！（味方が倒れても敵のHPダメージはそのまま引き継がれます）")
 else:
     game_html_template = """
     <!DOCTYPE html>
@@ -174,7 +184,7 @@ else:
             
             let enemy = { 
                 x: 550, y: 80, size: 90, 
-                hp: 90 + (stage * 45), maxHp: 90 + (stage * 45),
+                hp: ENEMY_CURRENT_HP, maxHp: ENEMY_MAX_HP,
                 name: "ENEMY_NAME",
                 targetX: 550,
                 targetY: 80,
@@ -268,7 +278,6 @@ else:
             function triggerBossMechanics() {
                 if (!enemyActive) return;
 
-                // 狂暴化判定（HPが50%以下で覚醒）
                 if (enemy.hp <= enemy.maxHp * 0.5) {
                     enemy.isEnraged = true;
                 }
@@ -276,7 +285,6 @@ else:
                 if (stage < 6) return;
                 enemy.specialTimer++;
 
-                // 重力場・ワームホールの生成（ステージ6以上で定期発生）
                 if (enemy.specialTimer % 250 === 0) {
                     specialEffects.push({
                         x: 550, y: 240,
@@ -382,12 +390,10 @@ else:
 
                 enemy.targetX = Math.max(100, Math.min(canvas.width - 100, enemy.targetX));
 
-                // 狂暴化時は移動速度もアップ
                 let responseSpeed = (0.08 + (stage * 0.012)) * (enemy.isEnraged ? 1.35 : 1.0);
                 enemy.x += (enemy.targetX - enemy.x) * responseSpeed;
                 enemy.y += (enemy.targetY - enemy.y) * responseSpeed;
 
-                // 通常弾幕（狂暴化時は頻度アップ＆弾速アップ）
                 let freq = Math.max(6, (35 - (stage * 3)) / (enemy.isEnraged ? 1.6 : 1.0));
                 if (frameCount % Math.floor(freq) === 0) {
                     if (stage <= 2) {
@@ -443,7 +449,7 @@ else:
 
                 updateAdvancedTacticalAI();
 
-                // 特殊エフェクト（毒沼・メテオ・重力場）の処理
+                // 特殊エフェクト
                 for (let i = specialEffects.length - 1; i >= 0; i--) {
                     let eff = specialEffects[i];
                     eff.duration--;
@@ -451,18 +457,23 @@ else:
                         let dist = Math.hypot(player.x - eff.x, player.y - eff.y);
                         if (dist < eff.radius + player.size/2) {
                             player.hp -= 0.3;
-                            if (player.hp <= 0) isGameOver = true;
+                            if (player.hp <= 0) {
+                                player.hp = 0;
+                                isGameOver = true;
+                            }
                         }
                     } else if (eff.type === "meteor") {
                         if (eff.duration === 1) {
                             let dist = Math.hypot(player.x - eff.x, player.y - eff.targetY);
                             if (dist < eff.radius + player.size/2) {
                                 player.hp -= 25;
-                                if (player.hp <= 0) isGameOver = true;
+                                if (player.hp <= 0) {
+                                    player.hp = 0;
+                                    isGameOver = true;
+                                }
                             }
                         }
                     } else if (eff.type === "gravity") {
-                        // 重力場：プレイヤーをボスの方向へじわじわと吸い寄せる
                         let pullAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
                         player.x += Math.cos(pullAngle) * 1.8;
                         player.y += Math.sin(pullAngle) * 1.8;
@@ -509,7 +520,10 @@ else:
                     if (dist < (player.size / 2 + b.size - 6)) {
                         player.hp -= (8 + stage * 1.5);
                         bullets.splice(i, 1);
-                        if (player.hp <= 0) isGameOver = true;
+                        if (player.hp <= 0) {
+                            player.hp = 0;
+                            isGameOver = true;
+                        }
                         continue;
                     }
 
@@ -560,6 +574,7 @@ else:
                         enemy.hp -= pb.damage;
                         playerBullets.splice(i, 1);
                         if (enemy.hp <= 0) {
+                            enemy.hp = 0;
                             isCleared = true;
                         }
                         continue;
@@ -586,7 +601,7 @@ else:
                     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
                 }
 
-                // 特殊エフェクト（重力場・毒沼・メテオ）
+                // 特殊エフェクト
                 for (let eff of specialEffects) {
                     ctx.fillStyle = eff.color;
                     ctx.beginPath();
@@ -628,7 +643,7 @@ else:
                     }
                 }
 
-                // 敵（狂暴化時は赤く光るエフェクト）
+                // 敵
                 if (enemy.isEnraged) {
                     ctx.shadowBlur = 20;
                     ctx.shadowColor = "#ff2222";
@@ -639,11 +654,11 @@ else:
                     ctx.fillStyle = enemy.isEnraged ? "#ff2222" : "#e74c3c";
                     ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.size/2, 0, Math.PI*2); ctx.fill();
                 }
-                ctx.shadowBlur = 0; // シャドウリセット
+                ctx.shadowBlur = 0;
 
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 14px sans-serif";
-                let statusText = enemy.isEnraged ? "🔥 【狂暴化觉醒】" : `[${enemy.aiState || 'WAIT'}]`;
+                let statusText = enemy.isEnraged ? "🔥 【狂暴化覚醒】" : `[${enemy.aiState || 'WAIT'}]`;
                 ctx.fillText(`Stage ${stage}: ${enemy.name} ${statusText}`, enemy.x, enemy.y - 58);
 
                 ctx.fillStyle = "#333";
@@ -672,7 +687,7 @@ else:
                 ctx.fillStyle = "#333";
                 ctx.fillRect(player.x - 45, player.y + 53, 90, 9);
                 ctx.fillStyle = "#2ecc71";
-                ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / enemy.maxHp), 9); // fix player hp bar
+                ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / player.maxHp), 9);
 
                 // 弾
                 for (let b of bullets) {
@@ -706,7 +721,7 @@ else:
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                     ctx.fillStyle = "#ff3333";
                     ctx.font = "bold 38px sans-serif";
-                    ctx.fillText(`${player.name} が倒れました！`, canvas.width / 2, canvas.height / 2 - 20);
+                    ctx.fillText(`${player.name} が死亡しました！`, canvas.width / 2, canvas.height / 2 - 20);
                     ctx.font = "18px sans-serif";
                     ctx.fillStyle = "#fff";
                     ctx.fillText("上の「中断」ボタンを押して仲間と交代してください", canvas.width / 2, canvas.height / 2 + 25);
@@ -734,17 +749,7 @@ else:
     </html>
     """
 
-    game_html = game_html_template\
-        .replace("PLAYER_IMG_B64", player_img_base64)\
-        .replace("ENEMY_IMG_B64", enemy_img_base64)\
-        .replace("STAGE_NUM", str(current_stage))\
-        .replace("ATTACK_LEVEL", str(st.session_state.attack_level))\
-        .replace("PLAYER_HP", str(active_p['hp']))\
-        .replace("PLAYER_MAXHP", str(active_p['maxHp']))\
-        .replace("PLAYER_NAME", active_p['name'])\
-        .replace("PLAYER_COLOR", active_p['color'])\
-        .replace("PLAYER_STYLE", active_p['style'])\
-        .replace("ENEMY_NAME", current_enemy_name)
+    game_html = game_html_template        .replace("PLAYER_IMG_B64", player_img_base64)        .replace("ENEMY_IMG_B64", enemy_img_base64)        .replace("STAGE_NUM", str(current_stage))        .replace("ATTACK_LEVEL", str(st.session_state.attack_level))        .replace("PLAYER_HP", str(active_p['hp']))        .replace("PLAYER_MAXHP", str(active_p['maxHp']))        .replace("PLAYER_NAME", active_p['name'])        .replace("PLAYER_COLOR", active_p['color'])        .replace("PLAYER_STYLE", active_p['style'])        .replace("ENEMY_NAME", current_enemy_name)        .replace("ENEMY_CURRENT_HP", str(st.session_state.enemy_hp))        .replace("ENEMY_MAX_HP", str(enemy_max_hp))
 
     components.html(game_html, height=500)
 
@@ -757,16 +762,19 @@ with ctrl_col1:
             st.session_state.stage += 1
             st.session_state.attack_level += 1
             st.session_state.game_started = False
+            st.session_state.enemy_hp = None # 次ステージ用に敵HPをリセット
             st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()
         else:
             st.success("🎉 全10ステージ完全踏破！魔王を討伐しました！")
 
 with ctrl_col2:
-    if st.button("👥 倒れたキャラを控えにして次の仲間と交代", use_container_width=True):
+    if st.button("👥 倒れたキャラを「死亡」扱いにして次の仲間と交代", use_container_width=True):
+        # 現在の出撃キャラのHPを0（死亡）に設定
         st.session_state.players[st.session_state.active_player_idx]["hp"] = 0
-        st.session_state.game_started, _ = False, None
+        st.session_state.game_started = False
         
+        # 次の生存キャラを探す
         next_idx = None
         for i, p in enumerate(st.session_state.players):
             if p["hp"] > 0:
@@ -775,7 +783,9 @@ with ctrl_col2:
         
         if next_idx is not None:
             st.session_state.active_player_idx = next_idx
-            st.success(f"生存している **{st.session_state.players[next_idx]['name']}** に交代しました！")
+            # 交代したキャラは100% HPで出撃
+            st.session_state.players[next_idx]["hp"] = st.session_state.players[next_idx]["maxHp"]
+            st.success(f"💀 前の仲間が死亡しました... 代わりに **{st.session_state.players[next_idx]['name']}** がHP100%で出撃します！（敵のダメージはそのまま引き継がれます）")
             st.rerun()
         else:
-            st.error("💀 パーティメンバーが全員戦闘不能（全滅）になりました... ゲームリセットしてください。")
+            st.error("💀 パーティメンバー3人が全員死亡（全滅）しました... GAME OVER！ゲームリセットしてください。")

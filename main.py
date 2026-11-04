@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（多彩な敵挙動・成長システム搭載版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（戦略的AI・成長システム搭載版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -26,7 +26,7 @@ if "players" not in st.session_state:
 if "active_player_idx" not in st.session_state:
     st.session_state.active_player_idx = 0
 if "attack_level" not in st.session_state:
-    st.session_state.attack_level = 1 # ステージクリアごとに上昇する攻撃パワー・球数レベル
+    st.session_state.attack_level = 1
 
 ENEMY_NAMES = {
     1: "ぷにぷにスライム",
@@ -116,10 +116,11 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦闘＆成長ガイド】**
-* **成長システム**: ステージをクリアするごとに味方の**成長Lv**が上がり、発射される弾の球数や威力がパワーアップします！
-* **敵の動きと攻撃手法の多様化**: 各ステージのボスごとに移動パターン（往復、上下うねり、高速ダッシュ、瞬間移動など）や弾幕手法（スパイラル弾、全方位ウェーブ、狙撃ニードルなど）が大きく異なります。
-* **トリガーシステム**: 移動キーまたはZキーを押すと戦闘が開始します。
+**【戦略AI戦術線ガイド】**
+* **敵の戦略的AI移動**: 
+  * 🧠 **遮蔽物回避回り込み**: プレイヤーが前壁（防壁）の陰に隠れていると、敵は攻撃を通すため**左右の隙間へ回り込もうと移動**します！
+  * 🧠 **自弾回避行動**: 味方の弾が近づくと、横スライドやステップで緊急回避を試みます！
+  * 🧠 **間合い管理**: プレイヤーとの距離や射角を常に判定し、有利な位置関係を維持します。
 """)
 
 if not st.session_state.game_started:
@@ -176,11 +177,12 @@ else:
                 x: 550, y: 80, size: 90, 
                 hp: 90 + (stage * 45), maxHp: 90 + (stage * 45),
                 name: "ENEMY_NAME",
-                moveTimer: 0,
-                baseY: 80
+                targetX: 550,
+                targetY: 80,
+                baseY: 80,
+                speed: 2.5 + (stage * 0.3)
             };
             
-            // 安全基地（3方向の壁）と障害物
             let obstacles = [
                 { x: 480, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true },
                 { x: 620, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true },
@@ -214,9 +216,8 @@ else:
                 keys[e.code] = false;
             });
 
-            // 成長システム（attackLevel）を反映したプレイヤー攻撃発射関数
             function shootPlayerAttack() {
-                let numStreams = Math.min(5, 1 + Math.floor((attackLevel - 1) / 2)); // レベルに応じて同時発射数増加
+                let numStreams = Math.min(5, 1 + Math.floor((attackLevel - 1) / 2));
                 let dmgBonus = (attackLevel - 1) * 4;
 
                 if (player.style === "laser") {
@@ -264,73 +265,79 @@ else:
                 }
             }
 
-            // ステージごとの多様な敵の弾幕パターン & 敵の動き
-            function updateEnemyBehavior() {
+            // 戦略的AI移動ロジック
+            function updateStrategicEnemyMovement() {
                 if (!enemyActive) return;
 
-                // 敵ごとの移動パターンの違い
-                enemy.moveTimer += 0.04 + (stage * 0.005);
-                if (stage <= 3) {
-                    // スライム・ゴブリン・竜幼体：標準的な左右往復＋緩やかな上下動
-                    enemy.x = 550 + Math.sin(enemy.moveTimer) * (180 + stage * 10);
-                    enemy.y = enemy.baseY + Math.cos(enemy.moveTimer * 2) * 15;
-                } else if (stage <= 6) {
-                    // スケルトン・ダークナイト・大蜘蛛：高速往復＋ジグザグ移動
-                    enemy.x = 550 + Math.sin(enemy.moveTimer * 1.5) * 280;
-                    enemy.y = enemy.baseY + Math.sin(enemy.moveTimer * 3) * 25;
-                } else {
-                    // 高難度ボス（キマイラ・ヴァンパイア・ドラゴン・魔王）：瞬間ワープ＆不規則ランダム機動
-                    if (Math.floor(enemy.moveTimer * 10) % 50 === 0 && Math.random() < 0.3) {
-                        enemy.x = 250 + Math.random() * 600; // ワープ
+                // 1. プレイヤーが前壁（X: 480〜620付近）に隠れているか判定
+                let isBehindCover = (player.x >= 470 && player.x <= 630 && player.y > 330);
+
+                if (isBehindCover) {
+                    // 戦略1：前壁で遮られている場合、前壁の外側（左右の射角）へアクティブに移動し、回り込んで攻撃を狙う
+                    if (frameCount % 60 < 30) {
+                        enemy.targetX = 380; // 左側の隙間方向
                     } else {
-                        enemy.x = 550 + Math.sin(enemy.moveTimer) * 320 + Math.cos(enemy.moveTimer * 2) * 100;
+                        enemy.targetX = 720; // 右側の隙間方向
                     }
-                    enemy.y = enemy.baseY + Math.sin(enemy.moveTimer * 2) * 35;
+                    enemy.targetY = enemy.baseY + Math.sin(frameCount * 0.05) * 20;
+                } else {
+                    // 戦略2：前壁の外にプレイヤーがいる場合、プレイヤーのX軸を精密追跡して直接狙い撃つ
+                    enemy.targetX = player.x;
+                    enemy.targetY = enemy.baseY + Math.cos(frameCount * 0.04) * 25;
                 }
 
-                // 弾幕発射のバリエーション
-                let freq = Math.max(8, 40 - (stage * 3));
+                // 戦略3：近づいてくる味方の弾を感知して回避移動（弾が近くにある場合横にスライド）
+                for (let pb of playerBullets) {
+                    let distToEnemy = Math.hypot(pb.x - enemy.x, pb.y - enemy.y);
+                    if (distToEnemy < 120 && pb.y > enemy.y) {
+                        // 弾から逃れる方向に目標位置を修正
+                        let dodgeDir = (pb.x > enemy.x) ? -1 : 1;
+                        enemy.targetX += dodgeDir * 60;
+                        break;
+                    }
+                }
+
+                // キャンバス端の制限
+                enemy.targetX = Math.max(120, Math.min(canvas.width - 120, enemy.targetX));
+
+                // スムーズな目標位置への補間（ステージが上がるほど追従スピードアップ）
+                let lerpSpeed = 0.03 + (stage * 0.008);
+                enemy.x += (enemy.targetX - enemy.x) * lerpSpeed;
+                enemy.y += (enemy.targetY - enemy.y) * lerpSpeed;
+
+                // 弾幕発射パターン
+                let freq = Math.max(8, 38 - (stage * 3));
                 if (frameCount % freq === 0) {
                     if (stage === 1) {
-                        // スライム：基本の3方向弾
                         for (let i = -1; i <= 1; i++) {
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 1.5, vy: 3.0, size: 8, color: "#4ade80", shape: "circle" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 1.5, vy: 3.2, size: 8, color: "#4ade80" });
                         }
                     } else if (stage === 2) {
-                        // ゴブリン：扇状の狙い撃ち
                         let count = 5;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / (count - 1)) * i;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.0, vy: Math.sin(angle) * 3.0 + 1.0, size: 8, color: "#fb923c", shape: "circle" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.2, vy: Math.sin(angle) * 3.2 + 1.0, size: 8, color: "#fb923c" });
                         }
                     } else if (stage === 3) {
-                        // 竜の幼体：高速ニードル弾
-                        for (let i = -2; i <= 2; i++) {
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 1.2, vy: 4.5, size: 7, color: "#f43f5e", shape: "needle" });
+                        // プレイヤー狙撃弾
+                        let angleToPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                        for (let i = -1; i <= 1; i++) {
+                            let a = angleToPlayer + i * 0.15;
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(a) * 4.5, vy: Math.sin(a) * 4.5, size: 8, color: "#f43f5e" });
                         }
-                    } else if (stage === 4 || stage === 5) {
-                        // スケルトン・ダークナイト：スパイラル回転弾幕
+                    } else if (stage <= 6) {
                         let count = 8;
-                        let offset = frameCount * 0.15;
+                        let offset = frameCount * 0.12;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI * 2 / count) * i + offset;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.2, vy: Math.sin(angle) * 3.2, size: 8, color: "#a855f7", shape: "star" });
-                        }
-                    } else if (stage === 6 || stage === 7) {
-                        // 大蜘蛛・キマイラ：全方位ウェーブ弾幕
-                        let count = 12;
-                        for (let i = 0; i < count; i++) {
-                            let angle = (Math.PI * 2 / count) * i;
-                            let spd = 3.5 + Math.sin(frameCount * 0.1) * 1.0;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd, size: 9, color: "#38bdf8", shape: "circle" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.4, vy: Math.sin(angle) * 3.4, size: 8, color: "#a855f7" });
                         }
                     } else {
-                        // 高難度（ヴァンパイア・ドラゴン・魔王）：高密度プラズマ全方位＋放射状複合弾幕
-                        let count = 16;
+                        let count = 14;
                         let wave = Math.sin(frameCount * 0.1) * 2.5;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / count) * i + wave;
-                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.2, vy: Math.sin(angle) * 4.2 + 1.5, size: 10, color: "#e879f9", shape: "plasma" });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.2, vy: Math.sin(angle) * 4.2 + 1.5, size: 10, color: "#e879f9" });
                         }
                     }
                 }
@@ -339,7 +346,6 @@ else:
             function update() {
                 if (isGameOver || isCleared) return;
 
-                // プレイヤー移動
                 let nextX = player.x;
                 let nextY = player.y;
                 if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) nextX -= player.speed;
@@ -347,7 +353,6 @@ else:
                 if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > player.size / 2) nextY -= player.speed;
                 if ((keys["ArrowDown"] || keys["KeyS"]) && player.y < canvas.height - player.size / 2) nextY += player.speed;
 
-                // 障害物衝突チェック
                 let canMoveX = true;
                 let canMoveY = true;
                 for (let obs of obstacles) {
@@ -367,7 +372,7 @@ else:
                 if (canMoveX) player.x = nextX;
                 if (canMoveY) player.y = nextY;
 
-                updateEnemyBehavior();
+                updateStrategicEnemyMovement();
 
                 // 敵の弾の移動と判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
@@ -593,7 +598,7 @@ with ctrl_col1:
     if st.button("⚔️ 次のステージへ進む（ステージ進行・成長Lvアップ）", use_container_width=True, type="primary"):
         if current_stage < 10:
             st.session_state.stage += 1
-            st.session_state.attack_level += 1 # ステージクリアごとに攻撃力・球数レベルがアップ！
+            st.session_state.attack_level += 1
             st.session_state.game_started = False
             st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()

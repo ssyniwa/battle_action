@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（3方向壁の安全基地・動的トリガー版）")
+st.title("⚔️ ダンジョン・ローグアタック：全10ステージ討伐の旅（多彩な敵挙動・成長システム搭載版）")
 st.markdown("---")
 
 # --- セッションステートの初期化 ---
@@ -25,6 +25,8 @@ if "players" not in st.session_state:
     ]
 if "active_player_idx" not in st.session_state:
     st.session_state.active_player_idx = 0
+if "attack_level" not in st.session_state:
+    st.session_state.attack_level = 1 # ステージクリアごとに上昇する攻撃パワー・球数レベル
 
 ENEMY_NAMES = {
     1: "ぷにぷにスライム",
@@ -60,6 +62,7 @@ col1, col2, col3, col4, col5 = st.columns([2, 2, 3, 2, 2])
 with col1:
     st.markdown(f"### 📍 Stage {current_stage}/10")
     st.write(f"**{current_enemy_name}**")
+    st.markdown(f"⭐ 成長Lv: **{st.session_state.attack_level}**")
 
 with col2:
     st.markdown(f"### 🕹️ 出撃中")
@@ -113,11 +116,10 @@ for i, p in enumerate(st.session_state.players):
 
 st.markdown("---")
 st.markdown("""
-**【戦闘ガイド】**
-* **敵の攻撃開始タイミング**: 「戦闘開始」後、あなたが**移動キー（矢印/WASD）を押すか、攻撃（Zキー）を行った瞬間**に敵の移動と弾幕射撃が開始します！
-* **狭い射撃壁（安全基地）**: 
-  * 味方の周りは狭い隙間だけが空いた高密度壁で囲まれています。
-  * 隙間を慎重に狙って攻撃を繰り出そう！
+**【戦闘＆成長ガイド】**
+* **成長システム**: ステージをクリアするごとに味方の**成長Lv**が上がり、発射される弾の球数や威力がパワーアップします！
+* **敵の動きと攻撃手法の多様化**: 各ステージのボスごとに移動パターン（往復、上下うねり、高速ダッシュ、瞬間移動など）や弾幕手法（スパイラル弾、全方位ウェーブ、狙撃ニードルなど）が大きく異なります。
+* **トリガーシステム**: 移動キーまたはZキーを押すと戦闘が開始します。
 """)
 
 if not st.session_state.game_started:
@@ -163,6 +165,7 @@ else:
             enemyImg.onload = () => { enemyLoaded = true; };
 
             let stage = STAGE_NUM;
+            let attackLevel = ATTACK_LEVEL;
             let player = { 
                 x: 550, y: 410, size: 55, speed: 7, 
                 hp: PLAYER_HP, maxHp: PLAYER_MAXHP, 
@@ -173,17 +176,15 @@ else:
                 x: 550, y: 80, size: 90, 
                 hp: 90 + (stage * 45), maxHp: 90 + (stage * 45),
                 name: "ENEMY_NAME",
-                moveTimer: 0
+                moveTimer: 0,
+                baseY: 80
             };
             
-            // 壁の隙間をより狭く調整（左壁、右壁、前壁の隙間寸法を絞る）
+            // 安全基地（3方向の壁）と障害物
             let obstacles = [
-                // 3方向安全基地（狭い隙間バンカー）
-                { x: 480, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 左壁（幅狭化）
-                { x: 620, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true }, // 右壁（幅狭化）
-                { x: 550, y: 330, w: 140, h: 20, hp: 999, maxHp: 999, indestructible: true },// 前壁（隙間を狭く設定）
-                
-                // フィールドの追加障害物
+                { x: 480, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true },
+                { x: 620, y: 380, w: 20, h: 90, hp: 999, maxHp: 999, indestructible: true },
+                { x: 550, y: 330, w: 140, h: 20, hp: 999, maxHp: 999, indestructible: true },
                 { x: 250, y: 230, w: 100, h: 20, hp: 120, maxHp: 120 },
                 { x: 850, y: 230, w: 100, h: 20, hp: 120, maxHp: 120 }
             ];
@@ -195,18 +196,15 @@ else:
             let frameCount = 0;
             let isGameOver = false;
             let isCleared = false;
-            let enemyActive = false; // プレイヤーが行動（移動・攻撃）を開始するまで敵は停止
+            let enemyActive = false;
 
             window.addEventListener("keydown", (e) => {
                 keys[e.code] = true;
-                
-                // 味方が移動キーまたは攻撃キーを押したら敵が攻撃を開始
                 if (!enemyActive) {
                     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS", "KeyZ", "KeyY"].includes(e.code)) {
                         enemyActive = true;
                     }
                 }
-
                 if ((e.code === "KeyZ" || e.code === "KeyY") && !isGameOver && !isCleared) {
                     shootPlayerAttack();
                     e.preventDefault();
@@ -216,107 +214,123 @@ else:
                 keys[e.code] = false;
             });
 
-            // キャラクターごとの攻撃スタイル発射関数
+            // 成長システム（attackLevel）を反映したプレイヤー攻撃発射関数
             function shootPlayerAttack() {
+                let numStreams = Math.min(5, 1 + Math.floor((attackLevel - 1) / 2)); // レベルに応じて同時発射数増加
+                let dmgBonus = (attackLevel - 1) * 4;
+
                 if (player.style === "laser") {
-                    playerBullets.push({
-                        x: player.x,
-                        y: player.y - 30,
-                        vx: 0,
-                        vy: -18,
-                        width: 6,
-                        height: 30,
-                        type: "laser",
-                        damage: 22
-                    });
+                    for (let i = 0; i < numStreams; i++) {
+                        let offsetX = (i - Math.floor(numStreams / 2)) * 14;
+                        playerBullets.push({
+                            x: player.x + offsetX,
+                            y: player.y - 30,
+                            vx: 0,
+                            vy: -18,
+                            width: 6 + Math.floor(attackLevel),
+                            height: 30,
+                            type: "laser",
+                            damage: 22 + dmgBonus
+                        });
+                    }
                 } else if (player.style === "orb") {
-                    playerBullets.push({
-                        x: player.x - 12,
-                        y: player.y - 25,
-                        vx: -0.5,
-                        vy: -12,
-                        size: 8,
-                        type: "orb",
-                        damage: 14
-                    });
-                    playerBullets.push({
-                        x: player.x + 12,
-                        y: player.y - 25,
-                        vx: 0.5,
-                        vy: -12,
-                        size: 8,
-                        type: "orb",
-                        damage: 14
-                    });
+                    let totalOrbs = 2 + (attackLevel - 1);
+                    for (let i = 0; i < totalOrbs; i++) {
+                        let angleOffset = (i - (totalOrbs - 1) / 2) * 0.15;
+                        playerBullets.push({
+                            x: player.x + (i - 1) * 10,
+                            y: player.y - 25,
+                            vx: angleOffset * 5,
+                            vy: -12,
+                            size: 8,
+                            type: "orb",
+                            damage: 14 + dmgBonus
+                        });
+                    }
                 } else if (player.style === "slash") {
-                    playerBullets.push({
-                        x: player.x,
-                        y: player.y - 30,
-                        vx: 0,
-                        vy: -10,
-                        width: 36,
-                        height: 14,
-                        type: "slash",
-                        damage: 28
-                    });
+                    for (let i = 0; i < numStreams; i++) {
+                        let offsetX = (i - Math.floor(numStreams / 2)) * 18;
+                        playerBullets.push({
+                            x: player.x + offsetX,
+                            y: player.y - 30,
+                            vx: 0,
+                            vy: -10,
+                            width: 36,
+                            height: 14,
+                            type: "slash",
+                            damage: 28 + dmgBonus
+                        });
+                    }
                 }
             }
 
-            // ステージごとに強化・進化する敵の弾幕パターン（enemyActive時のみ生成）
-            function spawnEnemyBullets() {
+            // ステージごとの多様な敵の弾幕パターン & 敵の動き
+            function updateEnemyBehavior() {
                 if (!enemyActive) return;
 
-                let freq = Math.max(10, 42 - (stage * 3));
-                
+                // 敵ごとの移動パターンの違い
+                enemy.moveTimer += 0.04 + (stage * 0.005);
+                if (stage <= 3) {
+                    // スライム・ゴブリン・竜幼体：標準的な左右往復＋緩やかな上下動
+                    enemy.x = 550 + Math.sin(enemy.moveTimer) * (180 + stage * 10);
+                    enemy.y = enemy.baseY + Math.cos(enemy.moveTimer * 2) * 15;
+                } else if (stage <= 6) {
+                    // スケルトン・ダークナイト・大蜘蛛：高速往復＋ジグザグ移動
+                    enemy.x = 550 + Math.sin(enemy.moveTimer * 1.5) * 280;
+                    enemy.y = enemy.baseY + Math.sin(enemy.moveTimer * 3) * 25;
+                } else {
+                    // 高難度ボス（キマイラ・ヴァンパイア・ドラゴン・魔王）：瞬間ワープ＆不規則ランダム機動
+                    if (Math.floor(enemy.moveTimer * 10) % 50 === 0 && Math.random() < 0.3) {
+                        enemy.x = 250 + Math.random() * 600; // ワープ
+                    } else {
+                        enemy.x = 550 + Math.sin(enemy.moveTimer) * 320 + Math.cos(enemy.moveTimer * 2) * 100;
+                    }
+                    enemy.y = enemy.baseY + Math.sin(enemy.moveTimer * 2) * 35;
+                }
+
+                // 弾幕発射のバリエーション
+                let freq = Math.max(8, 40 - (stage * 3));
                 if (frameCount % freq === 0) {
-                    if (stage <= 2) {
-                        let count = 3 + stage;
-                        for (let i = 0; i < count; i++) {
-                            let angle = (Math.PI / (count + 1)) * (i + 1);
-                            bullets.push({
-                                x: enemy.x, y: enemy.y + 40,
-                                vx: Math.cos(angle) * 2.5,
-                                vy: Math.sin(angle) * 2.5 + 1.5,
-                                size: 8, color: "#ff4444", shape: "circle"
-                            });
+                    if (stage === 1) {
+                        // スライム：基本の3方向弾
+                        for (let i = -1; i <= 1; i++) {
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 1.5, vy: 3.0, size: 8, color: "#4ade80", shape: "circle" });
                         }
-                    } else if (stage <= 5) {
-                        let count = 6 + stage;
-                        let offset = (frameCount * 0.1) % Math.PI;
+                    } else if (stage === 2) {
+                        // ゴブリン：扇状の狙い撃ち
+                        let count = 5;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / (count - 1)) * i;
-                            let speed = 3.0 + (stage * 0.2);
-                            bullets.push({
-                                x: enemy.x, y: enemy.y + 40,
-                                vx: Math.cos(angle + offset) * speed,
-                                vy: Math.abs(Math.sin(angle + offset)) * speed + 1.0,
-                                size: 9, color: "#ff8833", shape: "star"
-                            });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.0, vy: Math.sin(angle) * 3.0 + 1.0, size: 8, color: "#fb923c", shape: "circle" });
                         }
-                    } else if (stage <= 8) {
-                        let count = 10 + stage;
+                    } else if (stage === 3) {
+                        // 竜の幼体：高速ニードル弾
+                        for (let i = -2; i <= 2; i++) {
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: i * 1.2, vy: 4.5, size: 7, color: "#f43f5e", shape: "needle" });
+                        }
+                    } else if (stage === 4 || stage === 5) {
+                        // スケルトン・ダークナイト：スパイラル回転弾幕
+                        let count = 8;
+                        let offset = frameCount * 0.15;
+                        for (let i = 0; i < count; i++) {
+                            let angle = (Math.PI * 2 / count) * i + offset;
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 3.2, vy: Math.sin(angle) * 3.2, size: 8, color: "#a855f7", shape: "star" });
+                        }
+                    } else if (stage === 6 || stage === 7) {
+                        // 大蜘蛛・キマイラ：全方位ウェーブ弾幕
+                        let count = 12;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI * 2 / count) * i;
-                            let speed = 3.5 + (stage * 0.25);
-                            bullets.push({
-                                x: enemy.x, y: enemy.y + 40,
-                                vx: Math.cos(angle) * speed,
-                                vy: Math.sin(angle) * speed + 1.5,
-                                size: 8, color: "#ff33cc", shape: "needle"
-                            });
+                            let spd = 3.5 + Math.sin(frameCount * 0.1) * 1.0;
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd, size: 9, color: "#38bdf8", shape: "circle" });
                         }
                     } else {
+                        // 高難度（ヴァンパイア・ドラゴン・魔王）：高密度プラズマ全方位＋放射状複合弾幕
                         let count = 16;
-                        let wave = Math.sin(frameCount * 0.1) * 2.0;
+                        let wave = Math.sin(frameCount * 0.1) * 2.5;
                         for (let i = 0; i < count; i++) {
                             let angle = (Math.PI / count) * i + wave;
-                            let speed = 4.2 + (stage * 0.2);
-                            bullets.push({
-                                x: enemy.x, y: enemy.y + 40,
-                                vx: Math.cos(angle) * speed,
-                                vy: Math.sin(angle) * speed + 2.0,
-                                size: 10, color: "#9900ff", shape: "plasma"
-                            });
+                            bullets.push({ x: enemy.x, y: enemy.y + 40, vx: Math.cos(angle) * 4.2, vy: Math.sin(angle) * 4.2 + 1.5, size: 10, color: "#e879f9", shape: "plasma" });
                         }
                     }
                 }
@@ -325,23 +339,15 @@ else:
             function update() {
                 if (isGameOver || isCleared) return;
 
-                // プレイヤーの移動と障害物（壁）との衝突判定
+                // プレイヤー移動
                 let nextX = player.x;
                 let nextY = player.y;
-                if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) {
-                    nextX -= player.speed;
-                }
-                if ((keys["ArrowRight"] || keys["KeyD"]) && player.x < canvas.width - player.size / 2) {
-                    nextX += player.speed;
-                }
-                if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > player.size / 2) {
-                    nextY -= player.speed;
-                }
-                if ((keys["ArrowDown"] || keys["KeyS"]) && player.y < canvas.height - player.size / 2) {
-                    nextY += player.speed;
-                }
+                if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > player.size / 2) nextX -= player.speed;
+                if ((keys["ArrowRight"] || keys["KeyD"]) && player.x < canvas.width - player.size / 2) nextX += player.speed;
+                if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > player.size / 2) nextY -= player.speed;
+                if ((keys["ArrowDown"] || keys["KeyS"]) && player.y < canvas.height - player.size / 2) nextY += player.speed;
 
-                // 障害物との当たり判定（壁抜け防止）
+                // 障害物衝突チェック
                 let canMoveX = true;
                 let canMoveY = true;
                 for (let obs of obstacles) {
@@ -350,31 +356,18 @@ else:
                         let oRight = obs.x + obs.w / 2;
                         let oTop = obs.y - obs.h / 2;
                         let oBottom = obs.y + obs.h / 2;
-                        
                         if (player.y + player.size/2 > oTop && player.y - player.size/2 < oBottom) {
-                            if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) {
-                                canMoveX = false;
-                            }
+                            if (nextX + player.size/2 > oLeft && nextX - player.size/2 < oRight) canMoveX = false;
                         }
                         if (player.x + player.size/2 > oLeft && player.x - player.size/2 < oRight) {
-                            if (nextY + player.size/2 > oTop && nextY - player.size/2 < oBottom) {
-                                canMoveY = false;
-                            }
+                            if (nextY + player.size/2 > oTop && nextY - player.size/2 < oBottom) canMoveY = false;
                         }
                     }
                 }
                 if (canMoveX) player.x = nextX;
                 if (canMoveY) player.y = nextY;
 
-                // 敵の移動（enemyActive時のみ移動）
-                if (enemyActive) {
-                    let moveSpeedFactor = 0.05 + (stage * 0.008);
-                    let moveWidthFactor = 200 + (stage * 15);
-                    enemy.moveTimer += moveSpeedFactor;
-                    enemy.x = 550 + Math.sin(enemy.moveTimer) * moveWidthFactor;
-                }
-
-                spawnEnemyBullets();
+                updateEnemyBehavior();
 
                 // 敵の弾の移動と判定
                 for (let i = bullets.length - 1; i >= 0; i--) {
@@ -389,17 +382,13 @@ else:
                             let oRight = obs.x + obs.w / 2;
                             let oTop = obs.y - obs.h / 2;
                             let oBottom = obs.y + obs.h / 2;
-                            
                             if (b.x >= oLeft && b.x <= oRight && b.y >= oTop && b.y <= oBottom) {
                                 hitObstacle = true;
-                                if (!obs.indestructible) {
-                                    obs.hp -= 3;
-                                }
+                                if (!obs.indestructible) obs.hp -= 3;
                                 break;
                             }
                         }
                     }
-
                     if (hitObstacle) {
                         bullets.splice(i, 1);
                         continue;
@@ -407,11 +396,9 @@ else:
 
                     let dist = Math.hypot(b.x - player.x, b.y - player.y);
                     if (dist < (player.size / 2 + b.size - 6)) {
-                        player.hp -= (8 + stage * 2);
+                        player.hp -= (8 + stage * 1.5);
                         bullets.splice(i, 1);
-                        if (player.hp <= 0) {
-                            isGameOver = true;
-                        }
+                        if (player.hp <= 0) isGameOver = true;
                         continue;
                     }
 
@@ -420,7 +407,7 @@ else:
                     }
                 }
 
-                // 味方の攻撃弾の移動と判定
+                // プレイヤー攻撃弾の移動と判定
                 for (let i = playerBullets.length - 1; i >= 0; i--) {
                     let pb = playerBullets[i];
                     pb.x += pb.vx;
@@ -433,7 +420,6 @@ else:
                             let oRight = obs.x + obs.w / 2;
                             let oTop = obs.y - obs.h / 2;
                             let oBottom = obs.y + obs.h / 2;
-                            
                             if (pb.x >= oLeft && pb.x <= oRight && pb.y >= oTop && pb.y <= oBottom) {
                                 hitObs = true;
                                 break;
@@ -447,7 +433,6 @@ else:
 
                     let hitRadius = pb.type === "slash" ? 25 : (pb.type === "laser" ? 12 : 10);
                     let dist = Math.hypot(pb.x - enemy.x, pb.y - enemy.y);
-                    
                     if (dist < (enemy.size / 2 + hitRadius)) {
                         enemy.hp -= pb.damage;
                         playerBullets.splice(i, 1);
@@ -513,14 +498,13 @@ else:
 
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "bold 14px sans-serif";
-                ctx.fillText(`Stage ${stage}: ${enemy.name}`, enemy.x, enemy.y - 58);
+                ctx.fillText(`Stage ${stage}: ${enemy.name} (成長Lv:${attackLevel})`, enemy.x, enemy.y - 58);
 
                 ctx.fillStyle = "#333";
                 ctx.fillRect(enemy.x - 70, enemy.y - 48, 140, 10);
                 ctx.fillStyle = "#e74c3c";
                 ctx.fillRect(enemy.x - 70, enemy.y - 48, 140 * (Math.max(0, enemy.hp) / enemy.maxHp), 10);
 
-                // 敵未アクティブ時の待機メッセージ表示
                 if (!enemyActive) {
                     ctx.fillStyle = "#ffff00";
                     ctx.font = "bold 18px sans-serif";
@@ -544,43 +528,24 @@ else:
                 ctx.fillStyle = "#2ecc71";
                 ctx.fillRect(player.x - 45, player.y + 53, 90 * (Math.max(0, player.hp) / player.maxHp), 9);
 
-                // 弾の描画
+                // 弾描画
                 for (let b of bullets) {
                     ctx.fillStyle = b.color;
                     ctx.beginPath();
-                    if (b.shape === "needle") {
-                        ctx.arc(b.x, b.y, b.size * 0.7, 0, Math.PI * 2);
-                    } else if (b.shape === "plasma") {
-                        ctx.arc(b.x, b.y, b.size * 1.2, 0, Math.PI * 2);
-                    } else {
-                        ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
-                    }
+                    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
                 for (let pb of playerBullets) {
                     if (pb.type === "laser") {
                         ctx.fillStyle = "#ff2222";
-                        ctx.shadowBlur = 15;
-                        ctx.shadowColor = "#ff0000";
                         ctx.fillRect(pb.x - pb.width/2, pb.y - pb.height/2, pb.width, pb.height);
-                        ctx.shadowBlur = 0;
                     } else if (pb.type === "orb") {
                         ctx.fillStyle = "#00ccff";
-                        ctx.shadowBlur = 12;
-                        ctx.shadowColor = "#00ffff";
-                        ctx.beginPath();
-                        ctx.arc(pb.x, pb.y, pb.size, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.shadowBlur = 0;
+                        ctx.beginPath(); ctx.arc(pb.x, pb.y, pb.size, 0, Math.PI * 2); ctx.fill();
                     } else if (pb.type === "slash") {
                         ctx.fillStyle = "#ffdd00";
-                        ctx.shadowBlur = 18;
-                        ctx.shadowColor = "#ffff00";
-                        ctx.beginPath();
-                        ctx.ellipse(pb.x, pb.y, pb.width/2, pb.height/2, 0, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.shadowBlur = 0;
+                        ctx.beginPath(); ctx.ellipse(pb.x, pb.y, pb.width/2, pb.height/2, 0, 0, Math.PI * 2); ctx.fill();
                     }
                 }
 
@@ -617,7 +582,7 @@ else:
     </html>
     """
 
-    game_html = game_html_template        .replace("PLAYER_IMG_B64", player_img_base64)        .replace("ENEMY_IMG_B64", enemy_img_base64)        .replace("STAGE_NUM", str(current_stage))        .replace("PLAYER_HP", str(active_p['hp']))        .replace("PLAYER_MAXHP", str(active_p['maxHp']))        .replace("PLAYER_NAME", active_p['name'])        .replace("PLAYER_COLOR", active_p['color'])        .replace("PLAYER_STYLE", active_p['style'])        .replace("ENEMY_NAME", current_enemy_name)
+    game_html = game_html_template        .replace("PLAYER_IMG_B64", player_img_base64)        .replace("ENEMY_IMG_B64", enemy_img_base64)        .replace("STAGE_NUM", str(current_stage))        .replace("ATTACK_LEVEL", str(st.session_state.attack_level))        .replace("PLAYER_HP", str(active_p['hp']))        .replace("PLAYER_MAXHP", str(active_p['maxHp']))        .replace("PLAYER_NAME", active_p['name'])        .replace("PLAYER_COLOR", active_p['color'])        .replace("PLAYER_STYLE", active_p['style'])        .replace("ENEMY_NAME", current_enemy_name)
 
     components.html(game_html, height=500)
 
@@ -625,11 +590,12 @@ st.markdown("---")
 ctrl_col1, ctrl_col2 = st.columns(2)
 
 with ctrl_col1:
-    if st.button("⚔️ 次のステージへ進む（ステージ進行）", use_container_width=True, type="primary"):
+    if st.button("⚔️ 次のステージへ進む（ステージ進行・成長Lvアップ）", use_container_width=True, type="primary"):
         if current_stage < 10:
             st.session_state.stage += 1
+            st.session_state.attack_level += 1 # ステージクリアごとに攻撃力・球数レベルがアップ！
             st.session_state.game_started = False
-            st.success(f"Stage {st.session_state.stage} に進みます！「戦闘開始」を押してください。")
+            st.success(f"Stage {st.session_state.stage} に進みます！攻撃力がアップしました（成長Lv: {st.session_state.attack_level}）。「戦闘開始」を押してください。")
             st.rerun()
         else:
             st.success("🎉 全10ステージ完全踏破！魔王を討伐しました！")
